@@ -1,5 +1,7 @@
 # 📜 Genealogy Logger - Chrome Extension
 
+![Genealogy Logger Banner](social-preview.png)
+
 Log genealogical records from FamilySearch, MyHeritage, GenealogyBank, Find a Grave, Chronicling America, NARA, BLM Land Records, Internet Archive, and more directly into Google Sheets using Gemini 2.5 Flash.
 
 ---
