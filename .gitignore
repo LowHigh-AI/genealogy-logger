@@ -1,0 +1,16 @@
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Archives / Distributables (Use GitHub Releases for zips)
+*.zip
+
+# Logs & temp
+*.log
+.tmp/
+scratch/
+
+# Environment / Secrets
+.env
+.env.local
+config.local.json

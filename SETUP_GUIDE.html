@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Genealogy Logger - Quick Start & Setup Guide</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #14b8a6;
+      --accent-glow: rgba(20, 184, 166, 0.3);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .logo {
+      font-size: 48px;
+      margin-bottom: 12px;
+      display: inline-block;
+    }
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 16px;
+      margin-top: 6px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .step-badge {
+      background: var(--accent);
+      color: #042f2e;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+    }
+    h2 { font-size: 20px; font-weight: 700; }
+    ol, ul { padding-left: 24px; margin-top: 12px; }
+    li { margin-bottom: 10px; color: #e2e8f0; }
+    strong { color: #ffffff; }
+    code, kbd {
+      background: #0b0f19;
+      border: 1px solid #334155;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      color: #38bdf8;
+    }
+    .alert-box {
+      background: rgba(20, 184, 166, 0.1);
+      border-left: 4px solid var(--accent);
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    .warning-box {
+      background: rgba(245, 158, 11, 0.1);
+      border-left: 4px solid #f59e0b;
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    .btn {
+      display: inline-block;
+      background: var(--accent);
+      color: #042f2e;
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 700;
+      margin-top: 10px;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .feature-item {
+      background: #0f172a;
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .feature-item h3 { font-size: 15px; margin-bottom: 6px; color: #38bdf8; }
+    .feature-item p { font-size: 13px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="logo">📜</div>
+      <h1>Genealogy Logger</h1>
+      <p class="subtitle">Quick-Start Installation & Setup Guide for Anyone</p>
+    </header>
+
+    <!-- Step 1: Install into Chrome -->
+    <section class="card">
+      <div class="step-header">
+        <span class="step-badge">Step 1</span>
+        <h2>Add Extension to Google Chrome (30 seconds)</h2>
+      </div>
+      <ol>
+        <li>Unzip the <strong>Genealogy-Logger.zip</strong> folder onto your computer (e.g. into Documents or Desktop).</li>
+        <li>Open <strong>Google Chrome</strong> and type <code>chrome://extensions</code> in the address bar, then press <strong>Enter</strong>.</li>
+        <li>In the top right corner, switch on the <strong>"Developer mode"</strong> toggle.</li>
+        <li>In the top left corner, click <strong>"Load unpacked"</strong>.</li>
+        <li>Select the unzipped <strong>Genealogy-Logger</strong> folder and click <strong>Select / Open</strong>.</li>
+      </ol>
+      <div class="alert-box">
+        🎉 <strong>That's it!</strong> The Genealogy Logger settings tab will automatically open in Chrome.
+      </div>
+    </section>
+
+    <!-- Step 2: Google Sheet -->
+    <section class="card">
+      <div class="step-header">
+        <span class="step-badge">Step 2</span>
+        <h2>Connect Your Google Sheet (2 minutes)</h2>
+      </div>
+      <ol>
+        <li>Create a new spreadsheet at <a href="https://sheets.new" target="_blank" style="color:var(--accent)">sheets.new</a> (or open any existing sheet in your Google Drive).</li>
+        <li>In the top menu of Google Sheets, click <strong>Extensions &gt; Apps Script</strong>.</li>
+        <li>Delete any sample code in the editor.</li>
+        <li>Open the <code>google-sheets-script/Code.gs</code> file inside the extension folder (or click "Copy Script Code" on the extension settings page) and paste it into the script editor.</li>
+        <li>Click the blue <strong>Deploy</strong> button &gt; select <strong>New deployment</strong>.</li>
+        <li>Click the gear icon next to "Select type" &gt; select <strong>Web app</strong>:
+          <ul>
+            <li><strong>Execute as:</strong> <code>Me (your email)</code></li>
+            <li><strong>Who has access:</strong> <code>Anyone</code></li>
+          </ul>
+        </li>
+        <li>Click <strong>Deploy</strong>, authorize Google when asked, and copy the <strong>Web app URL</strong>.</li>
+        <li>Paste this URL into <strong>Step 2</strong> of the extension's Settings page.</li>
+      </ol>
+      <div class="warning-box">
+        💡 <em>Note on Google's Authorization screen:</em> Because this is your own personal script, Google may show a standard safety prompt: click <strong>"Advanced"</strong> and then <strong>"Go to Untitled project (unsafe)"</strong> to approve your own sheet script.
+      </div>
+    </section>
+
+    <!-- Step 3: Free Gemini Key -->
+    <section class="card">
+      <div class="step-header">
+        <span class="step-badge">Step 3</span>
+        <h2>Get Your Free Google AI API Key (60 seconds)</h2>
+      </div>
+      <ol>
+        <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent)">Google AI Studio (aistudio.google.com/app/apikey)</a>.</li>
+        <li>Sign in with your Google account.</li>
+        <li>Click the blue button <strong>"Create API key"</strong>.</li>
+        <li>Copy your new key (starts with <code>AIzaSy...</code>).</li>
+        <li>Paste it into <strong>Step 1</strong> of the extension's Settings page and click <strong>Save Settings</strong>!</li>
+      </ol>
+    </section>
+
+    <!-- How to use -->
+    <section class="card">
+      <div class="step-header">
+        <span class="step-badge">Usage</span>
+        <h2>How to Log Records While Browsing</h2>
+      </div>
+      <p style="color:var(--text-muted)">Whenever you are viewing an ancestor's record on any website, you can log it in 3 convenient ways:</p>
+      
+      <div class="features-grid">
+        <div class="feature-item">
+          <h3>⌨️ Omnibox "log"</h3>
+          <p>Click your browser address bar, type <kbd>log</kbd> + <kbd>Space</kbd>, type any optional notes, and press <kbd>Enter</kbd>.</p>
+        </div>
+        <div class="feature-item">
+          <h3>🖱️ 1-Click Toolbar</h3>
+          <p>Click the 📜 extension icon in your Chrome toolbar to capture and log the page instantly.</p>
+        </div>
+        <div class="feature-item">
+          <h3>⚡ Keyboard Shortcut</h3>
+          <p>Press <kbd>⌘+Shift+L</kbd> on Mac or <kbd>Ctrl+Shift+L</kbd> on Windows.</p>
+        </div>
+        <div class="feature-item">
+          <h3>📜 Right-Click Menu</h3>
+          <p>Right-click any record image, text, or page background and click "Log Genealogy Record".</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
