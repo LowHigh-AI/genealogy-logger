@@ -1,23 +1,40 @@
-// Genealogy Logger - Background Service Worker
+// Helper: Safely register Context Menus
+function setupContextMenus() {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "log-record-cm",
+      title: "Log Genealogy Record to Google Sheets",
+      contexts: ["page", "selection", "image"]
+    });
+
+    chrome.contextMenus.create({
+      id: "open-options-cm",
+      title: "Genealogy Logger Settings",
+      contexts: ["action"]
+    });
+
+    chrome.contextMenus.create({
+      id: "reload-extension-cm",
+      title: "🔄 Reload Extension",
+      contexts: ["action"]
+    });
+  });
+}
 
 // Initialize Context Menus and open setup on installation
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "install") {
     chrome.runtime.openOptionsPage();
   }
-
-  chrome.contextMenus.create({
-    id: "log-record-cm",
-    title: "Log Genealogy Record to Google Sheets",
-    contexts: ["page", "selection", "image"]
-  });
-
-  chrome.contextMenus.create({
-    id: "open-options-cm",
-    title: "Genealogy Logger Settings",
-    contexts: ["action"]
-  });
+  setupContextMenus();
 });
+
+// Ensure menus are active on startup
+if (chrome.runtime.onStartup) {
+  chrome.runtime.onStartup.addListener(() => {
+    setupContextMenus();
+  });
+}
 
 // Handle Context Menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -25,6 +42,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     await executeLogWorkflow(tab, info.selectionText ? `Selected text: ${info.selectionText}` : "");
   } else if (info.menuItemId === "open-options-cm") {
     chrome.runtime.openOptionsPage();
+  } else if (info.menuItemId === "reload-extension-cm") {
+    showNotification("Genealogy Logger", "Reloading extension...");
+    setTimeout(() => {
+      chrome.runtime.reload();
+    }, 200);
   }
 });
 
