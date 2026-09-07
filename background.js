@@ -62,26 +62,46 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
+// Concurrency lock to prevent multiple simultaneous runs on the same tab
+const activeTabProcessing = new Set();
+
 /**
  * Main workflow: extracts DOM metadata & screenshot, prompts Gemini 3.6 Flash,
  * and logs structured genealogical data to Google Sheets via Webhook.
  */
 async function executeLogWorkflow(tab, userNotes = "", tabOverride = "") {
   if (!tab || !tab.id) return;
-
-  // Restrict execution on internal browser pages
-  if (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:")) {
-    showNotification("Genealogy Logger", "Cannot run on internal browser pages. Please open a genealogy website.");
-    return;
-  }
-
   const tabId = tab.id;
 
+  if (activeTabProcessing.has(tabId)) {
+    await sendToast(tabId, "Already extracting record, please wait a moment...", "working", 2500);
+    return;
+  }
+  activeTabProcessing.add(tabId);
+
   try {
-    // 1. Indicate working state via Badge
+    // 1. Resolve full tab details if tab.url is missing (e.g. from keyboard shortcuts)
+    let currentTab = tab;
+    if (!currentTab.url) {
+      try {
+        currentTab = await chrome.tabs.get(tabId);
+      } catch (e) {
+        console.warn("Could not fetch full tab details:", e);
+      }
+    }
+
+    const currentUrl = currentTab.url || "";
+
+    // Restrict execution on internal browser pages
+    if (!currentUrl || currentUrl.startsWith("chrome://") || currentUrl.startsWith("chrome-extension://") || currentUrl.startsWith("about:")) {
+      showNotification("Genealogy Logger", "Cannot run on internal or blank browser pages. Please open a genealogy website.");
+      return;
+    }
+
+    // 2. Indicate working state via Badge
     await setBadge(tabId, "⏳", "#3b82f6");
 
-    // 2. Check configuration in chrome.storage.sync
+    // 3. Check configuration in chrome.storage.sync
     let {
       geminiApiKey = "",
       webhookUrl = "https://script.google.com/macros/s/AKfycbw0h7QsRUeZqhwOL2FxRFu5z-xrhTubDISvzG96K6cP0WHYOKI3SKOttnL00lBggZCI/exec",
@@ -118,10 +138,10 @@ async function executeLogWorkflow(tab, userNotes = "", tabOverride = "") {
 
     const targetTab = tabOverride || defaultTabName || "Genealogy Log";
 
-    // 3. Duplicate Record Check
+    // 4. Duplicate Record Check
     if (warnDuplicates) {
       const { loggedRecordHistory = [] } = await chrome.storage.local.get("loggedRecordHistory");
-      const existing = loggedRecordHistory.find(item => item.url === tab.url);
+      const existing = loggedRecordHistory.find(item => item.url === currentUrl);
       if (existing) {
         await sendToast(
           tabId,
@@ -132,7 +152,7 @@ async function executeLogWorkflow(tab, userNotes = "", tabOverride = "") {
       }
     }
 
-    // 4. Ensure content script is injected and extract DOM metadata
+    // 5. Ensure content script is injected and extract DOM metadata
     await sendToast(tabId, `Extracting record for "${targetTab}"...`, "working", 3000);
 
     let extractedData = {};
@@ -149,20 +169,27 @@ async function executeLogWorkflow(tab, userNotes = "", tabOverride = "") {
     } catch (scriptErr) {
       console.warn("DOM extraction fallback:", scriptErr);
       extractedData = {
-        url: tab.url,
-        title: tab.title,
+        url: currentUrl,
+        title: currentTab.title || "",
         siteCategory: "generic"
       };
     }
 
-    // 5. Capture visible tab screenshot (viewport)
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
-      format: "jpeg",
-      quality: 85
-    });
-    const base64Image = dataUrl.split(",")[1];
+    // 6. Capture visible tab screenshot (viewport) with graceful fallback
+    let base64Image = "";
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(currentTab.windowId || null, {
+        format: "jpeg",
+        quality: 85
+      });
+      if (dataUrl && dataUrl.includes(",")) {
+        base64Image = dataUrl.split(",")[1];
+      }
+    } catch (captureErr) {
+      console.warn("Visible tab screenshot capture failed, proceeding with DOM metadata:", captureErr);
+    }
 
-    // 6. Construct Gemini Prompt & Strict Schema
+    // 7. Construct Gemini Prompt & Strict Schema
     const systemPrompt = `You are a professional genealogist and archivist.
 Your job is to analyze the historical document image and provided page metadata to extract accurate biographical details.
 Carefully review names, dates, places, relationships, and source citations.
@@ -170,8 +197,8 @@ Avoid guessing; if a field is unknown, leave it empty or note uncertainty in tra
 ${customInstructions ? `Additional User Instructions: ${customInstructions}` : ""}`;
 
     const textPayload = {
-      pageUrl: tab.url,
-      pageTitle: tab.title,
+      pageUrl: currentUrl,
+      pageTitle: currentTab.title || "",
       userNotes: userNotes || undefined,
       domExtractedData: extractedData
     };
@@ -180,21 +207,23 @@ ${customInstructions ? `Additional User Instructions: ${customInstructions}` : "
 
     const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(preferredModel)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
 
+    const contentParts = [{ text: userPrompt }];
+    if (base64Image) {
+      contentParts.push({
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: base64Image
+        }
+      });
+    }
+
     const geminiBody = {
       system_instruction: {
         parts: [{ text: systemPrompt }]
       },
       contents: [
         {
-          parts: [
-            { text: userPrompt },
-            {
-              inlineData: {
-                mimeType: "image/jpeg",
-                data: base64Image
-              }
-            }
-          ]
+          parts: contentParts
         }
       ],
       generationConfig: {
@@ -271,21 +300,32 @@ ${customInstructions ? `Additional User Instructions: ${customInstructions}` : "
     }
 
     const rawJsonString = geminiRes.candidates[0].content.parts[0].text;
-    const parsedRecord = JSON.parse(rawJsonString);
+    let cleanedJson = rawJsonString.trim();
+    if (cleanedJson.startsWith("```")) {
+      cleanedJson = cleanedJson.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    }
+    const parsedRecord = JSON.parse(cleanedJson);
 
     // Merge supplementary contextual fields for the spreadsheet
+    let sourceHost = "";
+    try {
+      sourceHost = extractedData.hostname || new URL(currentUrl).hostname;
+    } catch (e) {
+      sourceHost = "web";
+    }
+
     const finalPayload = {
       ...parsedRecord,
       targetTab,
-      recordUrl: tab.url,
+      recordUrl: currentUrl,
       userNotes: userNotes || parsedRecord.userNotes || "",
       citation: parsedRecord.citation || extractedData.citation || "",
-      sourceWebsite: extractedData.hostname || new URL(tab.url).hostname,
+      sourceWebsite: sourceHost,
       // Include image base64 if Drive clipping saving is enabled
-      imageJpegBase64: saveScansToDrive ? base64Image : undefined
+      imageJpegBase64: saveScansToDrive && base64Image ? base64Image : undefined
     };
 
-    // 7. Dispatch to Google Apps Script Webhook
+    // 8. Dispatch to Google Apps Script Webhook
     const webhookReq = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -296,17 +336,17 @@ ${customInstructions ? `Additional User Instructions: ${customInstructions}` : "
       throw new Error(`Webhook failed with status: ${webhookReq.status}`);
     }
 
-    // 8. Update Duplicate History in chrome.storage.local
+    // 9. Update Duplicate History in chrome.storage.local
     const { loggedRecordHistory = [] } = await chrome.storage.local.get("loggedRecordHistory");
     const today = new Date().toLocaleDateString();
     const updatedHistory = [
-      { url: tab.url, person: finalPayload.primaryPerson, date: today, timestamp: Date.now() },
-      ...loggedRecordHistory.filter(item => item.url !== tab.url)
+      { url: currentUrl, person: finalPayload.primaryPerson, date: today, timestamp: Date.now() },
+      ...loggedRecordHistory.filter(item => item.url !== currentUrl)
     ].slice(0, 200); // Keep last 200 records
 
     await chrome.storage.local.set({ loggedRecordHistory: updatedHistory });
 
-    // 9. Success Visual Feedback
+    // 10. Success Visual Feedback
     await setBadge(tabId, "✓", "#10b981");
     const personLabel = finalPayload.primaryPerson || "Record";
     const eventLabel = finalPayload.eventType ? `(${finalPayload.eventType})` : "";
@@ -326,10 +366,13 @@ ${customInstructions ? `Additional User Instructions: ${customInstructions}` : "
     console.error("Genealogy Logger Error:", error);
     await setBadge(tabId, "ERR", "#ef4444");
     await sendToast(tabId, `Logging failed: ${error.message || error}`, "error", 6000);
+    showNotification("Genealogy Logger", `Logging failed: ${error.message || error}`);
 
     setTimeout(() => {
       setBadge(tabId, "", "#000000");
     }, 5000);
+  } finally {
+    activeTabProcessing.delete(tabId);
   }
 }
 
@@ -352,12 +395,26 @@ async function setBadge(tabId, text, color) {
  */
 async function sendToast(tabId, message, toastType = "info", duration = 4000) {
   try {
-    await chrome.tabs.sendMessage(tabId, {
-      action: "showToast",
-      message,
-      toastType,
-      duration
-    });
+    try {
+      await chrome.tabs.sendMessage(tabId, {
+        action: "showToast",
+        message,
+        toastType,
+        duration
+      });
+    } catch (msgErr) {
+      // If content script is not yet injected on this tab, inject and retry
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["content/extractor.js"]
+      });
+      await chrome.tabs.sendMessage(tabId, {
+        action: "showToast",
+        message,
+        toastType,
+        duration
+      });
+    }
   } catch (e) {
     if (toastType === "error") {
       showNotification("Genealogy Logger", message);

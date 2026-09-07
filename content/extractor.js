@@ -1,6 +1,11 @@
 // Genealogy Logger - Content Extractor & In-Page Feedback
 
 (function () {
+  if (window.__genealogyLoggerInjected) {
+    return;
+  }
+  window.__genealogyLoggerInjected = true;
+
   /**
    * Displays an elegant on-page toast notification to give the user immediate feedback.
    */
@@ -408,13 +413,13 @@
     if (request.action === "extractData") {
       const data = extractPageMetadata();
       sendResponse({ status: "ok", data });
-      return true;
+      return false;
     }
 
     if (request.action === "showToast") {
       showToast(request.message, request.toastType || "info", request.duration || 4000);
       sendResponse({ status: "displayed" });
-      return true;
+      return false;
     }
   });
 
