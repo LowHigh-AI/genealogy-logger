@@ -292,23 +292,18 @@ ${customInstructions ? `Additional User Instructions: ${customInstructions}` : "
       }
     };
 
-    let geminiReq = await fetch(geminiEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiBody)
-    });
+    let geminiReq = await callGeminiWithRetry(geminiEndpoint, geminiBody, tabId, 3);
 
-    // Fallback: If chosen model returns 404 (e.g. deprecated/unsupported), automatically fallback to gemini-3.6-flash
-    if (geminiReq.status === 404 && preferredModel !== "gemini-3.6-flash") {
-      console.warn(`Model "${preferredModel}" returned 404. Falling back to gemini-3.6-flash.`);
+    // Fallback: If chosen model returns 404 (unavailable) or persistent 503 on pro, fallback to gemini-3.6-flash
+    if ((geminiReq.status === 404 || geminiReq.status === 503) && preferredModel !== "gemini-3.6-flash") {
+      const reason = geminiReq.status === 404 ? "is unavailable" : "is temporarily overloaded (503)";
+      console.warn(`Model "${preferredModel}" ${reason}. Falling back to gemini-3.6-flash.`);
+      await sendToast(tabId, `Model ${preferredModel} ${reason}, retrying with Gemini 3.6 Flash...`, "working", 3000);
+
       preferredModel = "gemini-3.6-flash";
       chrome.storage.sync.set({ preferredModel });
       const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
-      geminiReq = await fetch(fallbackEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(geminiBody)
-      });
+      geminiReq = await callGeminiWithRetry(fallbackEndpoint, geminiBody, tabId, 2);
     }
 
     if (!geminiReq.ok) {
@@ -409,6 +404,49 @@ async function setBadge(tabId, text, color) {
     }
   } catch (e) {
     // Ignore tab-closed errors
+  }
+}
+
+/**
+ * Helper: Calls Gemini API with exponential backoff retry on transient errors (503, 429, 500, 504).
+ */
+async function callGeminiWithRetry(endpoint, body, tabId, maxRetries = 3) {
+  let attempt = 0;
+  let delay = 1500;
+
+  while (attempt <= maxRetries) {
+    let res;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+    } catch (networkErr) {
+      if (attempt >= maxRetries) throw networkErr;
+      const retrySec = (delay / 1000).toFixed(1);
+      await sendToast(tabId, `Network connection glitch, retrying in ${retrySec}s...`, "working", 2500);
+      await new Promise(r => setTimeout(r, delay));
+      delay *= 1.5;
+      attempt++;
+      continue;
+    }
+
+    // Check for transient server overload (503), rate limit (429), or gateway timeout (504/500)
+    if ((res.status === 503 || res.status === 429 || res.status === 500 || res.status === 504) && attempt < maxRetries) {
+      const retrySec = (delay / 1000).toFixed(1);
+      const msg = res.status === 503 
+        ? `Gemini server is busy (503), retrying in ${retrySec}s (attempt ${attempt + 1}/${maxRetries})...`
+        : `Gemini rate limit (${res.status}), retrying in ${retrySec}s (attempt ${attempt + 1}/${maxRetries})...`;
+      
+      await sendToast(tabId, msg, "working", delay + 500);
+      await new Promise(r => setTimeout(r, delay));
+      delay *= 2;
+      attempt++;
+      continue;
+    }
+
+    return res;
   }
 }
 
