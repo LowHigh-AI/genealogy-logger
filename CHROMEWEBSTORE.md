@@ -28,7 +28,7 @@ KEY FEATURES:
 • Address Bar Quick-Log: Type "log" followed by Space or Tab in your Chrome address bar, add any notes, and press Enter.
 • One-Click Logging: Click the toolbar icon or press Command+Shift+L (Mac) / Ctrl+Shift+L (Windows).
 • Specialized Archive Scrapers: Built-in DOM extractors for FamilySearch, MyHeritage, GenealogyBank, Find a Grave, Chronicling America (Library of Congress), National Archives (NARA), BLM Land Records, Internet Archive, WikiTree, and BillionGraves.
-• Multi-Modal AI Precision: Combines on-page metadata with high-resolution visual document capture analyzed by Google Gemini 2.5 Flash to eliminate handwriting transcription errors.
+• Multi-Modal AI Precision: Combines on-page metadata with high-resolution visual document capture analyzed by Google Gemini 3.6 Flash to eliminate handwriting transcription errors.
 • Google Drive Document Archive: Automatically saves document clippings to a "Genealogy Document Clippings" Google Drive folder and links them in your spreadsheet.
 • Family Line Routing: Direct records to custom tabs (e.g. typing "log [Smith Line] 1920 Census" routes to the "Smith Line" tab).
 • Duplicate Protection: Alerts you if you already logged a record from that URL.

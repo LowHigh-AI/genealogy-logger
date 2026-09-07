@@ -63,7 +63,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 });
 
 /**
- * Main workflow: extracts DOM metadata & screenshot, prompts Gemini 2.5 Flash,
+ * Main workflow: extracts DOM metadata & screenshot, prompts Gemini 3.6 Flash,
  * and logs structured genealogical data to Google Sheets via Webhook.
  */
 async function executeLogWorkflow(tab, userNotes = "", tabOverride = "") {
@@ -82,13 +82,13 @@ async function executeLogWorkflow(tab, userNotes = "", tabOverride = "") {
     await setBadge(tabId, "⏳", "#3b82f6");
 
     // 2. Check configuration in chrome.storage.sync
-    const {
+    let {
       geminiApiKey = "",
       webhookUrl = "https://script.google.com/macros/s/AKfycbw0h7QsRUeZqhwOL2FxRFu5z-xrhTubDISvzG96K6cP0WHYOKI3SKOttnL00lBggZCI/exec",
       defaultTabName = "Genealogy Log",
       saveScansToDrive = true,
       warnDuplicates = true,
-      preferredModel = "gemini-2.5-flash",
+      preferredModel = "gemini-3.6-flash",
       customInstructions = ""
     } = await chrome.storage.sync.get([
       "geminiApiKey",
@@ -99,6 +99,15 @@ async function executeLogWorkflow(tab, userNotes = "", tabOverride = "") {
       "preferredModel",
       "customInstructions"
     ]);
+
+    // Automatically migrate deprecated 2.5 models
+    if (preferredModel === "gemini-2.5-flash" || !preferredModel) {
+      preferredModel = "gemini-3.6-flash";
+      chrome.storage.sync.set({ preferredModel });
+    } else if (preferredModel === "gemini-2.5-pro") {
+      preferredModel = "gemini-3.6-pro";
+      chrome.storage.sync.set({ preferredModel });
+    }
 
     if (!geminiApiKey || !webhookUrl) {
       await setBadge(tabId, "CFG", "#f59e0b");
@@ -232,11 +241,24 @@ ${customInstructions ? `Additional User Instructions: ${customInstructions}` : "
       }
     };
 
-    const geminiReq = await fetch(geminiEndpoint, {
+    let geminiReq = await fetch(geminiEndpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(geminiBody)
     });
+
+    // Fallback: If chosen model returns 404 (e.g. deprecated/unsupported), automatically fallback to gemini-3.6-flash
+    if (geminiReq.status === 404 && preferredModel !== "gemini-3.6-flash") {
+      console.warn(`Model "${preferredModel}" returned 404. Falling back to gemini-3.6-flash.`);
+      preferredModel = "gemini-3.6-flash";
+      chrome.storage.sync.set({ preferredModel });
+      const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+      geminiReq = await fetch(fallbackEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiBody)
+      });
+    }
 
     if (!geminiReq.ok) {
       const errText = await geminiReq.text();

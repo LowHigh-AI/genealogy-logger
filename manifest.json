@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Genealogy Logger",
-  "version": "1.2",
+  "version": "1.2.1",
   "description": "Log genealogical records from FamilySearch, MyHeritage, GenealogyBank & more to Google Sheets using Gemini.",
   "icons": {
     "16": "icons/icon-16.png",

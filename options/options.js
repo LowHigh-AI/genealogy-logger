@@ -100,13 +100,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const copyScriptInline = document.getElementById("copyScriptInline");
 
   // Load existing settings
-  const {
+  let {
     geminiApiKey = "",
     webhookUrl = "https://script.google.com/macros/s/AKfycbw0h7QsRUeZqhwOL2FxRFu5z-xrhTubDISvzG96K6cP0WHYOKI3SKOttnL00lBggZCI/exec",
     defaultTabName = "Genealogy Log",
     saveScansToDrive = true,
     warnDuplicates = true,
-    preferredModel = "gemini-2.5-flash",
+    preferredModel = "gemini-3.6-flash",
     customInstructions = DEFAULT_INSTRUCTIONS
   } = await chrome.storage.sync.get([
     "geminiApiKey",
@@ -117,6 +117,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     "preferredModel",
     "customInstructions"
   ]);
+
+  // Automatically migrate deprecated 2.5 models
+  if (preferredModel === "gemini-2.5-flash" || !preferredModel) {
+    preferredModel = "gemini-3.6-flash";
+    chrome.storage.sync.set({ preferredModel });
+  } else if (preferredModel === "gemini-2.5-pro") {
+    preferredModel = "gemini-3.6-pro";
+    chrome.storage.sync.set({ preferredModel });
+  }
 
   geminiApiKeyInput.value = geminiApiKey;
   webhookUrlInput.value = webhookUrl;
