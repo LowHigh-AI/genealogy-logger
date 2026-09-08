@@ -69,12 +69,14 @@ body {
 }
 
 .text-snippet {
-  height: 40px;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  height: 100px;
+  overflow-y: auto;
+  display: block;
+  white-space: pre-wrap;
   color: #475569;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding-right: 4px;
 }
 
 .actions {

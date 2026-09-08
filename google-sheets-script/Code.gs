@@ -41,7 +41,10 @@ function doPost(e) {
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
     
-    const prompt = `Extract genealogy facts from the raw text. Return strictly a JSON object.\nRaw Text: ${data.rawText}`;
+    const prompt = `You are an expert genealogist. Analyze the following raw text and document image (if provided). 
+Extract the genealogical facts into a structured JSON format. 
+Make sure to include a comprehensive 'transcription' of the actual historical record data if it is present in the raw text, and summarize the key findings in 'evidenceSummary'.
+Raw Text: ${data.rawText}`;
 
     let geminiContentParts = [{ text: prompt }];
 
@@ -69,7 +72,8 @@ function doPost(e) {
             county: { type: "STRING" },
             city: { type: "STRING" },
             recordType: { type: "STRING" },
-            evidenceSummary: { type: "STRING" },
+            evidenceSummary: { type: "STRING", description: "Concise summary of key biographical facts and evidence." },
+            transcription: { type: "STRING", description: "The full text transcription of the historical record or document, capturing all enumerated individuals and data." },
             citation: { type: "STRING" },
             geoFileName: { type: "STRING", description: "YYYY-MM-DD_Country_State_County_City_RecordType_Name" },
             relatives: { type: "ARRAY", items: { type: "STRING" } }
@@ -150,7 +154,7 @@ function doPost(e) {
       const headers = [
         "Logged Date", "Primary Person", "Family Line", "Event Date", 
         "Country", "State", "County", "City", "Record Type", 
-        "Relatives", "Citation", "Document Scan", "Source Link", "Evidence Summary"
+        "Relatives", "Citation", "Document Scan", "Source Link", "Evidence Summary", "Transcription"
       ];
       sheet.appendRow(headers);
       sheet.getRange(1, 1, 1, headers.length).setBackground("#1e293b").setFontColor("#f8fafc").setFontWeight("bold");
@@ -176,7 +180,8 @@ function doPost(e) {
       extractedJson.citation || "",
       scanCell,
       sourceCell,
-      extractedJson.evidenceSummary || ""
+      extractedJson.evidenceSummary || "",
+      extractedJson.transcription || ""
     ];
 
     sheet.appendRow(row);

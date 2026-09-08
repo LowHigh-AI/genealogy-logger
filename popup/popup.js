@@ -117,9 +117,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     messageArea.className = "message hidden";
 
     try {
-      // Retrieve settings (webAppUrl, apiKey) from storage
-      const settings = await chrome.storage.sync.get(['webAppUrl', 'apiKey']);
-      if (!settings.webAppUrl) {
+      // Retrieve settings (webhookUrl, apiKey) from storage
+      const settings = await chrome.storage.sync.get(['webhookUrl', 'apiKey']);
+      if (!settings.webhookUrl) {
         throw new Error("Web App URL not set in extension options.");
       }
 
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         apiKey: settings.apiKey || ""
       };
 
-      const response = await fetch(settings.webAppUrl, {
+      const response = await fetch(settings.webhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
