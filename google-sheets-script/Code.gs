@@ -166,22 +166,30 @@ Raw Text: ${data.rawText}`;
     const sourceCell = data.sourceUrl ? `=HYPERLINK("${data.sourceUrl}", "Open Record")` : "";
     const relativesStr = extractedJson.relatives ? extractedJson.relatives.join("\n") : "";
 
+    const sanitize = (val) => {
+      if (typeof val !== "string") return val;
+      if (/^[=+\-@]/.test(val)) {
+        return "'" + val;
+      }
+      return val;
+    };
+
     const row = [
       timestamp,
-      extractedJson.ancestorName || "Unknown",
-      extractedJson.familyLine || "",
-      extractedJson.recordDate || "",
-      extractedJson.country || "",
-      extractedJson.state || "",
-      extractedJson.county || "",
-      extractedJson.city || "",
-      extractedJson.recordType || "",
-      relativesStr,
-      extractedJson.citation || "",
+      sanitize(extractedJson.ancestorName || "Unknown"),
+      sanitize(extractedJson.familyLine || ""),
+      sanitize(extractedJson.recordDate || ""),
+      sanitize(extractedJson.country || ""),
+      sanitize(extractedJson.state || ""),
+      sanitize(extractedJson.county || ""),
+      sanitize(extractedJson.city || ""),
+      sanitize(extractedJson.recordType || ""),
+      sanitize(relativesStr),
+      sanitize(extractedJson.citation || ""),
       scanCell,
       sourceCell,
-      extractedJson.evidenceSummary || "",
-      extractedJson.transcription || ""
+      sanitize(extractedJson.evidenceSummary || ""),
+      sanitize(extractedJson.transcription || "")
     ];
 
     sheet.appendRow(row);
