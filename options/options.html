@@ -26,7 +26,7 @@
       <!-- Settings Form Card -->
       <section class="card form-card">
         <div class="card-header">
-          <h2>API & Webhook Setup</h2>
+          <h2>Google Apps Script Setup</h2>
           <span class="badge">Required</span>
         </div>
 
@@ -34,61 +34,27 @@
           <div class="form-group step-group">
             <div class="step-badge-label">
               <span class="step-num">Step 1</span>
-              <label for="geminiApiKey">
-                Gemini API Key (Free)
-                <a href="https://aistudio.google.com/app/apikey" target="_blank" class="help-link">Click here to get your free key &nearr;</a>
+              <label for="webhookUrl">
+                Google Sheets Webhook URL
+                <a href="#guide" class="help-link" id="viewGuideLink">See setup steps below &darr;</a>
               </label>
             </div>
-            <div class="input-wrapper">
-              <input type="password" id="geminiApiKey" placeholder="Paste your AIzaSy... key here" autocomplete="off">
-              <button type="button" class="toggle-btn" id="toggleApiKey" title="Show/Hide Key">👁️</button>
-            </div>
-            <p class="field-hint">Google gives you a free Gemini API key with generous monthly quotas. Just log in and click "Create API key".</p>
+            <input type="url" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec">
+            <p class="field-hint">The address of your Google Apps Script webhook.</p>
           </div>
 
           <div class="form-group step-group">
             <div class="step-badge-label">
               <span class="step-num">Step 2</span>
-              <label for="webhookUrl">
-                Google Sheets Webhook URL
-                <a href="#guide" class="help-link" id="viewGuideLink">See 2-min setup steps below &darr;</a>
+              <label for="apiKey">
+                Security API Key (x-api-key)
               </label>
             </div>
-            <input type="url" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec">
-            <p class="field-hint">The address of your spreadsheet webhook so records get saved directly into your Google Drive sheet.</p>
-          </div>
-
-          <div class="form-group">
-            <label for="defaultTabName">Target Sheet Tab Name</label>
-            <input type="text" id="defaultTabName" placeholder="Genealogy Log" value="Genealogy Log">
-            <p class="field-hint">Routes records to this tab. Tip: You can also route on-the-fly by typing <code>log [FamilyName] notes</code> in the address bar!</p>
-          </div>
-
-          <div class="form-group checkbox-group">
-            <label class="checkbox-label">
-              <input type="checkbox" id="saveScansToDrive" checked>
-              <span><strong>Save document clippings to Google Drive</strong> (saves JPEG to a 'Genealogy Document Clippings' folder and adds link in sheet)</span>
-            </label>
-          </div>
-
-          <div class="form-group checkbox-group">
-            <label class="checkbox-label">
-              <input type="checkbox" id="warnDuplicates" checked>
-              <span><strong>Warn if page was already logged</strong> (checks browsing history to prevent duplicate entries)</span>
-            </label>
-          </div>
-
-          <div class="form-group">
-            <label for="preferredModel">Gemini Model</label>
-            <select id="preferredModel">
-              <option value="gemini-3.6-flash" selected>gemini-3.6-flash (Fast, accurate, multimodal - Recommended)</option>
-              <option value="gemini-3.6-pro">gemini-3.6-pro (Deeper reasoning for complex cursive documents)</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="customInstructions">Custom Extraction Instructions (Optional)</label>
-            <textarea id="customInstructions" rows="3" placeholder="e.g. Always normalize maiden names in parentheses, or note census enumeration districts."></textarea>
+            <div class="input-wrapper">
+              <input type="password" id="apiKey" placeholder="Your secret key (e.g. GENEALOGY_SECRET_2026)" autocomplete="off">
+              <button type="button" class="toggle-btn" id="toggleApiKey" title="Show/Hide Key">👁️</button>
+            </div>
+            <p class="field-hint">Must match the GAS_SECRET_KEY in your Apps Script project properties to authorize requests.</p>
           </div>
 
           <div class="button-row">
@@ -99,59 +65,16 @@
         </form>
       </section>
 
-      <!-- Quick Usage Card -->
-      <section class="card usage-card">
-        <div class="card-header">
-          <h2>How to Log Records</h2>
-        </div>
-        <div class="usage-list">
-          <div class="usage-item">
-            <div class="usage-icon">⌨️</div>
-            <div>
-              <strong>Omnibox Quick Log</strong>
-              <p>Type <kbd>log</kbd> then press <kbd>Space</kbd> or <kbd>Tab</kbd> in Chrome's address bar, type any optional notes, and press <kbd>Enter</kbd>.</p>
-            </div>
-          </div>
-
-          <div class="usage-item">
-            <div class="usage-icon">🖱️</div>
-            <div>
-              <strong>Toolbar Click</strong>
-              <p>Click the 📜 extension icon in your Chrome toolbar on any genealogy page to log instantly.</p>
-            </div>
-          </div>
-
-          <div class="usage-item">
-            <div class="usage-icon">⚡</div>
-            <div>
-              <strong>Keyboard Shortcut</strong>
-              <p>Press <kbd>Ctrl+Shift+L</kbd> (or <kbd>⌘+Shift+L</kbd> on Mac) to trigger extraction instantly.</p>
-            </div>
-          </div>
-
-          <div class="usage-item">
-            <div class="usage-icon">🌐</div>
-            <div>
-              <strong>Specialized Sites</strong>
-              <p>FamilySearch, MyHeritage, GenealogyBank, Find A Grave, Chronicling America (LOC), National Archives (NARA), BLM Land Records, Internet Archive, WikiTree, BillionGraves, plus any page with highlighted text.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <!-- Apps Script Guide Card -->
       <section class="card guide-card" id="guide">
         <div class="card-header">
-          <h2>Google Sheet Webhook Setup (2 Minutes)</h2>
-          <button class="btn btn-sm" id="copyScriptBtn">Copy Script Code</button>
+          <h2>Google Sheet Webhook Setup</h2>
         </div>
         <ol class="guide-steps">
-          <li>Open your target Google Sheet.</li>
-          <li>Click <strong>Extensions &gt; Apps Script</strong> in the Google Sheets top menu.</li>
-          <li>Replace existing code with the companion script (<button type="button" class="link-btn" id="copyScriptInline">Click here to copy script</button>).</li>
-          <li>Click <strong>Deploy &gt; New deployment</strong>.</li>
-          <li>Choose type <strong>Web app</strong>. Set <em>Execute as: "Me"</em> and <em>Who has access: "Anyone"</em>.</li>
-          <li>Click <strong>Deploy</strong> and paste the generated <strong>Web app URL</strong> into the field above.</li>
+          <li>Deploy the provided Code.gs to your Google Apps Script project.</li>
+          <li>In your GAS project settings, add the <strong>GEMINI_API_KEY</strong> script property with your Gemini API key.</li>
+          <li>Add the <strong>GAS_SECRET_KEY</strong> script property with a secure password (e.g., <code>GENEALOGY_SECRET_2026</code>).</li>
+          <li>Deploy as a Web App and paste the URL and Secret Key above.</li>
         </ol>
       </section>
     </main>

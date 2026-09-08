@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+  <title>Genealogy Logger</title>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">Genealogy Logger</div>
+    <div class="badge" id="status-badge">Loading...</div>
+  </div>
+
+  <div class="content">
+    <div class="preview-card">
+      <div class="label">Source URL</div>
+      <div class="value truncate" id="url-preview">-</div>
+      
+      <div class="label">Media Detected</div>
+      <div class="value" id="media-preview">Scanning...</div>
+      
+      <div class="label">Text Preview</div>
+      <div class="value text-snippet" id="text-preview">Scanning...</div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="send-log-btn" class="btn btn-primary" disabled>Send to Log</button>
+    <button id="copy-gemini-btn" class="btn btn-secondary" disabled>Copy for Gemini</button>
+  </div>
+  
+  <div id="message-area" class="message hidden"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

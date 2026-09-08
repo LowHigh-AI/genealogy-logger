@@ -17,6 +17,8 @@
  * 7. Paste the Web app URL into the Genealogy Logger extension settings.
  */
 
+const SPREADSHEET_ID = "11ul12tBcS1_H5RUaMA9w6YJ8gWlaMUkB";
+
 function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.tryLock(30000);
@@ -25,115 +27,162 @@ function doPost(e) {
     const rawData = e.postData.contents;
     const data = JSON.parse(rawData);
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const tabName = (data.targetTab || "Genealogy Log").trim();
-    let sheet = ss.getSheetByName(tabName);
-
-    const headers = [
-      "Logged Date",
-      "Primary Person",
-      "Event Type",
-      "Event Date",
-      "Event Place",
-      "Family / Relatives",
-      "Collection / Source",
-      "Citation",
-      "Document Scan (Drive)",
-      "Source Link",
-      "Transcription / Summary",
-      "User Notes"
-    ];
-
-    // Create the tab and headers if it does not exist
-    if (!sheet) {
-      sheet = ss.insertSheet(tabName);
-      sheet.appendRow(headers);
-
-      const headerRange = sheet.getRange(1, 1, 1, headers.length);
-      headerRange.setBackground("#1e293b");
-      headerRange.setFontColor("#f8fafc");
-      headerRange.setFontWeight("bold");
-      headerRange.setHorizontalAlignment("center");
-      sheet.setFrozenRows(1);
+    // 1. Endpoint Security Check
+    const apiKey = e.parameter["x-api-key"] || data.apiKey;
+    const expectedKey = PropertiesService.getScriptProperties().getProperty("GAS_SECRET_KEY") || "GENEALOGY_SECRET_2026";
+    if (apiKey !== expectedKey) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "403 Forbidden" }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 1. Save document clipping to Google Drive if image base64 is provided
-    let scanUrl = "";
-    if (data.imageJpegBase64) {
-      try {
-        const folderName = "Genealogy Document Clippings";
-        const folders = DriveApp.getFoldersByName(folderName);
-        let folder;
-        if (folders.hasNext()) {
-          folder = folders.next();
-        } else {
-          folder = DriveApp.createFolder(folderName);
-        }
+    // 2. Gemini API Call for Structured Data
+    const geminiApiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    if (!geminiApiKey) throw new Error("GEMINI_API_KEY not set in Script Properties");
 
-        const decoded = Utilities.base64Decode(data.imageJpegBase64);
-        const dateTag = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd_HHmmss");
-        const safeName = (data.primaryPerson || "Record").replace(/[^a-zA-Z0-9_\- ]/g, "_");
-        const fileName = `${safeName}_${dateTag}.jpg`;
-        const blob = Utilities.newBlob(decoded, "image/jpeg", fileName);
-        const file = folder.createFile(blob);
-        scanUrl = file.getUrl();
-      } catch (driveErr) {
-        Logger.log("Drive save error: " + driveErr.toString());
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+    
+    const prompt = `Extract genealogy facts from the raw text. Return strictly a JSON object.\nRaw Text: ${data.rawText}`;
+
+    const geminiPayload = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        response_mime_type: "application/json",
+        response_schema: {
+          type: "OBJECT",
+          properties: {
+            ancestorName: { type: "STRING" },
+            familyLine: { type: "STRING", description: "Primary surname" },
+            recordDate: { type: "STRING", description: "YYYY-MM-DD or standardized historical date" },
+            country: { type: "STRING" },
+            state: { type: "STRING" },
+            county: { type: "STRING" },
+            city: { type: "STRING" },
+            recordType: { type: "STRING" },
+            evidenceSummary: { type: "STRING" },
+            citation: { type: "STRING" },
+            geoFileName: { type: "STRING", description: "YYYY-MM-DD_Country_State_County_City_RecordType_Name" },
+            relatives: { type: "ARRAY", items: { type: "STRING" } }
+          },
+          required: ["ancestorName", "familyLine", "recordType", "geoFileName"]
+        }
+      }
+    };
+
+    const geminiOptions = {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(geminiPayload),
+      muteHttpExceptions: true
+    };
+
+    const geminiResponse = UrlFetchApp.fetch(geminiUrl, geminiOptions);
+    if (geminiResponse.getResponseCode() !== 200) {
+      throw new Error("Gemini API Error: " + geminiResponse.getContentText());
+    }
+    
+    const geminiData = JSON.parse(geminiResponse.getContentText());
+    const extractedText = geminiData.candidates[0].content.parts[0].text;
+    const extractedJson = JSON.parse(extractedText);
+
+    // 3. File Handling & Drive Routing
+    const familyLine = extractedJson.familyLine || "Uncategorized";
+    const baseFolderName = "Genealogy Document Clippings";
+    
+    let baseFolder;
+    const baseFolders = DriveApp.getFoldersByName(baseFolderName);
+    if (baseFolders.hasNext()) {
+      baseFolder = baseFolders.next();
+    } else {
+      baseFolder = DriveApp.createFolder(baseFolderName);
+    }
+
+    let familyFolder;
+    const familyFolders = baseFolder.getFoldersByName(familyLine);
+    if (familyFolders.hasNext()) {
+      familyFolder = familyFolders.next();
+    } else {
+      familyFolder = baseFolder.createFolder(familyLine);
+    }
+
+    let fileUrl = "";
+    if (data.fileBase64 || data.printUrl) {
+      let blob;
+      let extension = ".jpg";
+      let mimeType = data.mimeType || "image/jpeg";
+      
+      if (mimeType === "image/png") extension = ".png";
+      else if (mimeType === "application/pdf") extension = ".pdf";
+      
+      let finalFileName = (extractedJson.geoFileName || "document").replace(/\.[^/.]+$/, "") + extension;
+
+      if (data.fileBase64) {
+        const decoded = Utilities.base64Decode(data.fileBase64);
+        blob = Utilities.newBlob(decoded, mimeType, finalFileName);
+      } else if (data.printUrl) {
+        const fetchRes = UrlFetchApp.fetch(data.printUrl);
+        blob = fetchRes.getBlob().setName(finalFileName);
+      }
+      
+      if (blob) {
+        const file = familyFolder.createFile(blob);
+        fileUrl = file.getUrl();
       }
     }
 
-    // 2. Format relatives list
-    let relativesStr = "";
-    if (Array.isArray(data.relatives)) {
-      relativesStr = data.relatives.join("\n");
-    } else if (data.relatives && typeof data.relatives === "object") {
-      relativesStr = Object.entries(data.relatives)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join("\n");
-    } else if (data.relatives) {
-      relativesStr = String(data.relatives);
+    // 4. Append to Spreadsheet
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const tabName = "Genealogy Log";
+    let sheet = ss.getSheetByName(tabName);
+    
+    if (!sheet) {
+      sheet = ss.insertSheet(tabName);
+      const headers = [
+        "Logged Date", "Primary Person", "Family Line", "Event Date", 
+        "Country", "State", "County", "City", "Record Type", 
+        "Relatives", "Citation", "Document Scan", "Source Link", "Evidence Summary"
+      ];
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setBackground("#1e293b").setFontColor("#f8fafc").setFontWeight("bold");
+      sheet.setFrozenRows(1);
     }
 
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
-    const sourceUrl = data.recordUrl || data.url || "";
-
-    const scanCell = scanUrl ? `=HYPERLINK("${scanUrl}", "View Scan")` : "No scan";
-    const sourceCell = sourceUrl ? `=HYPERLINK("${sourceUrl}", "Open Record")` : "";
+    const scanCell = fileUrl ? `=HYPERLINK("${fileUrl}", "View Scan")` : "No scan";
+    const sourceCell = data.sourceUrl ? `=HYPERLINK("${data.sourceUrl}", "Open Record")` : "";
+    const relativesStr = extractedJson.relatives ? extractedJson.relatives.join("\n") : "";
 
     const row = [
       timestamp,
-      data.primaryPerson || data.personName || "Unknown",
-      data.eventType || "Record",
-      data.eventDate || "",
-      data.eventPlace || "",
+      extractedJson.ancestorName || "Unknown",
+      extractedJson.familyLine || "",
+      extractedJson.recordDate || "",
+      extractedJson.country || "",
+      extractedJson.state || "",
+      extractedJson.county || "",
+      extractedJson.city || "",
+      extractedJson.recordType || "",
       relativesStr,
-      data.collectionOrSource || data.sourceWebsite || "",
-      data.citation || "",
+      extractedJson.citation || "",
       scanCell,
       sourceCell,
-      data.transcriptionOrSummary || data.notes || "",
-      data.userNotes || ""
+      extractedJson.evidenceSummary || ""
     ];
 
     sheet.appendRow(row);
-
     const lastRow = sheet.getLastRow();
     sheet.getRange(lastRow, 1, 1, row.length).setVerticalAlignment("top").setWrap(true);
 
-    return ContentService.createTextOutput(
-      JSON.stringify({
-        status: "success",
-        tab: tabName,
-        rowAdded: lastRow,
-        scanUrl: scanUrl || null
-      })
-    ).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "success",
+      tab: tabName,
+      rowAdded: lastRow,
+      scanUrl: fileUrl || null,
+      extractedData: extractedJson
+    })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
-    return ContentService.createTextOutput(
-      JSON.stringify({ status: "error", message: err.toString() })
-    ).setMimeType(ContentService.MimeType.JSON);
-
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
   } finally {
     lock.releaseLock();
   }
