@@ -43,8 +43,19 @@ function doPost(e) {
     
     const prompt = `Extract genealogy facts from the raw text. Return strictly a JSON object.\nRaw Text: ${data.rawText}`;
 
+    let geminiContentParts = [{ text: prompt }];
+
+    if (data.fileBase64) {
+      geminiContentParts.push({
+        inlineData: {
+          mimeType: data.mimeType || "image/jpeg",
+          data: data.fileBase64
+        }
+      });
+    }
+
     const geminiPayload = {
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ parts: geminiContentParts }],
       generationConfig: {
         response_mime_type: "application/json",
         response_schema: {

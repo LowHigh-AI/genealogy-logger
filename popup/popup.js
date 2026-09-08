@@ -27,16 +27,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       files: ['content/content.js']
     });
 
-    // Send message to content script to scrape data
+    // Extract text from ALL frames to ensure no dropdown/iframe context is missed
+    const textResults = await chrome.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true },
+      func: () => {
+        return document.documentElement.innerText.replace(/\s+/g, ' ').trim();
+      }
+    });
+    const combinedText = textResults.map(r => r.result).filter(t => t.length > 0).join('\n\n--- Additional Frame Context ---\n\n');
+
+    // Send message to content script to scrape media
     chrome.tabs.sendMessage(tab.id, { action: "scrape_data" }, async (response) => {
       if (chrome.runtime.lastError || !response || !response.success) {
         throw new Error(chrome.runtime.lastError?.message || response?.error || "Failed to scrape page.");
       }
 
       scrapedData = response;
+      scrapedData.rawText = combinedText; // Override with comprehensive multi-frame text
       
       // Update UI
-      textPreview.textContent = response.rawText.substring(0, 100) + "...";
+      textPreview.textContent = scrapedData.rawText.substring(0, 100) + "...";
       
       // Handle Background Capture if needed
       if (response.media.needsBackgroundCapture) {
@@ -56,7 +66,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       } else if (response.media.fileBase64) {
         mediaPreview.textContent = "Image Extracted (" + response.media.mimeType + ")";
       } else if (response.media.printUrl) {
-        mediaPreview.textContent = "Print URL Found (" + response.media.mimeType + ")";
+        mediaPreview.textContent = "Fetching High-Res Image...";
+        try {
+          const res = await fetch(response.media.printUrl);
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          await new Promise((resolve) => {
+            reader.onloadend = () => {
+              response.media.fileBase64 = reader.result.split(',')[1];
+              resolve();
+            };
+          });
+          mediaPreview.textContent = "High-Res Image Fetched (" + response.media.mimeType + ")";
+        } catch (e) {
+          console.warn("Failed to fetch printUrl locally", e);
+          mediaPreview.textContent = "Print URL Found (Fetch Failed)";
+        }
       } else {
         mediaPreview.textContent = "No primary media found";
       }
