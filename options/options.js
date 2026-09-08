@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Load existing settings
   let {
     apiKey = "",
-    webhookUrl = "https://script.google.com/macros/s/AKfycby_3WAH0V3GdOzY1pzC--FrdCZmUgaQeCwkqair74wKzqPRhiWp-EW9GKIgprQel9eM/exec"
+    webhookUrl = "https://script.google.com/macros/s/AKfycbw0Ga8e_Ey4cLcpLmLE0vWtl3PH8IEMqMmajTN94cs6CvSpSn68jjqNjevD1lQ6vyme/exec"
   } = await chrome.storage.sync.get([
     "apiKey",
     "webhookUrl"
