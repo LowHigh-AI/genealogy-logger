@@ -30,7 +30,7 @@ KEY FEATURES:
 • Specialized Archive Scrapers: Built-in DOM extractors for FamilySearch, MyHeritage, GenealogyBank, Find a Grave, Chronicling America (Library of Congress), National Archives (NARA), BLM Land Records, Internet Archive, WikiTree, and BillionGraves.
 • Multi-Modal AI Precision: Combines on-page metadata with high-resolution visual document capture analyzed by Google Gemini 3.6 Flash to eliminate handwriting transcription errors.
 • Google Drive Document Archive: Automatically saves document clippings to a "Genealogy Document Clippings" Google Drive folder and links them in your spreadsheet.
-• Family Line Routing: Direct records to custom tabs (e.g. typing "log [Smith Line] 1920 Census" routes to the "Smith Line" tab).
+• Family Line Routing: Add your ancestral surnames in Settings, then pick the active one from the popup — it stays selected until you change it, and each family line logs to its own tab in your Google Sheet.
 • Duplicate Protection: Alerts you if you already logged a record from that URL.
 
 HOW TO USE:

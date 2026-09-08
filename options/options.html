@@ -65,6 +65,26 @@
         </form>
       </section>
 
+      <!-- Family Lines Card -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Family Lines</h2>
+          <span class="badge">Optional</span>
+        </div>
+        <p class="field-hint" style="margin-bottom: 14px;">
+          Add a line for each ancestral surname you research. Pick the active one from the
+          popup before logging &mdash; it stays selected until you change it, and each line
+          gets its own tab in your Google Sheet.
+        </p>
+
+        <form id="familyLineForm" class="input-wrapper" style="gap: 10px; margin-bottom: 14px;">
+          <input type="text" id="familyLineInput" placeholder="e.g. Luebbert (Paternal)" maxlength="90" style="padding-right: 14px;">
+          <button type="submit" class="btn btn-secondary" style="margin-left: 10px; white-space: nowrap;">Add</button>
+        </form>
+        <div id="familyLineList" class="family-line-list"></div>
+        <div id="familyLineFeedback" class="feedback-msg"></div>
+      </section>
+
       <!-- Apps Script Guide Card -->
       <section class="card guide-card" id="guide">
         <div class="card-header">

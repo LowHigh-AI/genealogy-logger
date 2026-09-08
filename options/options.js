@@ -9,20 +9,100 @@ document.addEventListener("DOMContentLoaded", async () => {
   const saveFeedback = document.getElementById("saveFeedback");
   const overallStatus = document.getElementById("overallStatus");
   const statusText = document.getElementById("statusText");
+  const familyLineForm = document.getElementById("familyLineForm");
+  const familyLineInput = document.getElementById("familyLineInput");
+  const familyLineList = document.getElementById("familyLineList");
+  const familyLineFeedback = document.getElementById("familyLineFeedback");
 
   // Load existing settings
   let {
     apiKey = "",
-    webhookUrl = "https://script.google.com/macros/s/AKfycbw0Ga8e_Ey4cLcpLmLE0vWtl3PH8IEMqMmajTN94cs6CvSpSn68jjqNjevD1lQ6vyme/exec"
+    webhookUrl = "https://script.google.com/macros/s/AKfycbw0Ga8e_Ey4cLcpLmLE0vWtl3PH8IEMqMmajTN94cs6CvSpSn68jjqNjevD1lQ6vyme/exec",
+    familyLines = []
   } = await chrome.storage.sync.get([
     "apiKey",
-    "webhookUrl"
+    "webhookUrl",
+    "familyLines"
   ]);
 
   apiKeyInput.value = apiKey;
   webhookUrlInput.value = webhookUrl;
 
   updateStatusBadge(apiKey, webhookUrl);
+  renderFamilyLines();
+
+  // --- Family Lines ---
+
+  // Sheet tab names can't contain these characters (or exceed 100 chars).
+  const INVALID_TAB_CHARS = /[:\\/?*\[\]]/;
+
+  function renderFamilyLines() {
+    familyLineList.innerHTML = "";
+    if (familyLines.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "family-line-empty";
+      empty.textContent = "No family lines yet — add one above.";
+      familyLineList.appendChild(empty);
+      return;
+    }
+    familyLines.forEach((line) => {
+      const chip = document.createElement("span");
+      chip.className = "family-line-chip";
+      const label = document.createElement("span");
+      label.textContent = line;
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "chip-remove";
+      removeBtn.title = `Remove "${line}"`;
+      removeBtn.textContent = "✕";
+      removeBtn.addEventListener("click", () => removeFamilyLine(line));
+      chip.appendChild(label);
+      chip.appendChild(removeBtn);
+      familyLineList.appendChild(chip);
+    });
+  }
+
+  async function saveFamilyLines() {
+    await chrome.storage.sync.set({ familyLines });
+    // If the active target was removed, fall back to the default tab next time the popup opens.
+    const { activeFamilyLine } = await chrome.storage.sync.get(["activeFamilyLine"]);
+    if (activeFamilyLine && !familyLines.includes(activeFamilyLine)) {
+      await chrome.storage.sync.remove("activeFamilyLine");
+    }
+  }
+
+  function showFamilyLineFeedback(msg, type) {
+    familyLineFeedback.className = `feedback-msg ${type}`;
+    familyLineFeedback.textContent = msg;
+    familyLineFeedback.style.display = "block";
+    setTimeout(() => {
+      familyLineFeedback.style.display = "none";
+    }, 4000);
+  }
+
+  familyLineForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = familyLineInput.value.trim();
+    if (!name) return;
+    if (INVALID_TAB_CHARS.test(name)) {
+      showFamilyLineFeedback('Family line names can\'t contain : \\ / ? * [ ]', "error");
+      return;
+    }
+    if (familyLines.some((l) => l.toLowerCase() === name.toLowerCase())) {
+      showFamilyLineFeedback("That family line already exists.", "error");
+      return;
+    }
+    familyLines.push(name);
+    await saveFamilyLines();
+    renderFamilyLines();
+    familyLineInput.value = "";
+  });
+
+  async function removeFamilyLine(name) {
+    familyLines = familyLines.filter((l) => l !== name);
+    await saveFamilyLines();
+    renderFamilyLines();
+  }
 
   // Toggle API Key visibility
   toggleApiKeyBtn.addEventListener("click", () => {

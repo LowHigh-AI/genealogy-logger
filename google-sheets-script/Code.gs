@@ -2,7 +2,9 @@
  * Google Apps Script for Genealogy Logger Chrome Extension
  * 
  * FEATURES:
- * - Dynamic tab routing (routes records to specific family/project tabs)
+ * - Family-line tab routing: the extension popup sends a persistent "targetFamilyLine"
+ *   (configured & selected by the user in Settings/popup) and each family line gets its
+ *   own sheet tab, auto-created with a self-healing header row.
  * - Automatic Google Drive clipping storage (saves document screenshot to Drive folder)
  * - Hyperlinked columns for Document Scan & Source URL
  * - Auto-formatting & column sizing
@@ -18,10 +20,39 @@
  */
 
 const SPREADSHEET_ID = "11ul12tBcS1_H5RUaMA9w6YJ8gWlaMUkB";
+const DEFAULT_TAB_NAME = "Genealogy Log";
+const HEADERS = [
+  "Logged Date", "Primary Person", "Event Type", "Event Date",
+  "Event Place", "Family / Relatives", "Collection / Source",
+  "Citation", "Document Scan (Drive Link)", "Source Link", "Transcription"
+];
+
+// Google Sheets forbids : \ / ? * [ ] in a tab name and caps it at 100 chars.
+function sanitizeTabName(name) {
+  const cleaned = (name || "").toString().replace(/[:\\/?*\[\]]/g, "").trim();
+  return cleaned ? cleaned.slice(0, 100) : DEFAULT_TAB_NAME;
+}
+
+// Ensures the given sheet's row 1 matches HEADERS, rewriting it if it's missing,
+// stale (an older schema), or belongs to a brand-new tab. Never touches data rows.
+function ensureHeaders(sheet) {
+  const headerRange = sheet.getRange(1, 1, 1, HEADERS.length);
+  const currentHeaders = sheet.getLastRow() > 0 ? headerRange.getValues()[0] : [];
+  const headersMatch = HEADERS.every((h, i) => currentHeaders[i] === h);
+  if (!headersMatch) {
+    headerRange.setValues([HEADERS]);
+    headerRange.setBackground("#1e293b").setFontColor("#f8fafc").setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  }
+}
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
-  lock.tryLock(30000);
+  const gotLock = lock.tryLock(30000);
+  if (!gotLock) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Server busy, please try again." }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 
   try {
     const rawData = e.postData.contents;
@@ -41,9 +72,9 @@ function doPost(e) {
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
     
-    const prompt = `You are an expert genealogist. Analyze the following raw text and document image (if provided). 
-Extract the genealogical facts into a structured JSON format. 
-Make sure to include a comprehensive 'transcription' of the actual historical record data if it is present in the raw text, and summarize the key findings in 'evidenceSummary'.
+    const prompt = `You are an expert genealogist. Analyze the following raw text and document image (if provided).
+Extract the genealogical facts into a structured JSON format.
+Make sure to include a comprehensive 'transcription' of the actual historical record data if it is present in the raw text.
 Raw Text: ${data.rawText}`;
 
     let geminiContentParts = [{ text: prompt }];
@@ -64,21 +95,18 @@ Raw Text: ${data.rawText}`;
         response_schema: {
           type: "OBJECT",
           properties: {
-            ancestorName: { type: "STRING" },
-            familyLine: { type: "STRING", description: "Primary surname" },
-            recordDate: { type: "STRING", description: "YYYY-MM-DD or standardized historical date" },
-            country: { type: "STRING" },
-            state: { type: "STRING" },
-            county: { type: "STRING" },
-            city: { type: "STRING" },
-            recordType: { type: "STRING" },
-            evidenceSummary: { type: "STRING", description: "Concise summary of key biographical facts and evidence." },
-            transcription: { type: "STRING", description: "The full text transcription of the historical record or document, capturing all enumerated individuals and data." },
+            primaryPerson: { type: "STRING" },
+            eventType: { type: "STRING", description: "e.g., Census, Marriage, Birth, Death" },
+            eventDate: { type: "STRING", description: "YYYY-MM-DD or standardized historical date" },
+            eventPlace: { type: "STRING", description: "City, County, State, Country" },
+            familyLine: { type: "STRING", description: "Primary surname for folder routing" },
+            relatives: { type: "ARRAY", items: { type: "STRING", description: "Format: 'Relationship: Name'" } },
+            collectionSource: { type: "STRING", description: "e.g., 1880 United States Federal Census" },
             citation: { type: "STRING" },
-            geoFileName: { type: "STRING", description: "YYYY-MM-DD_Country_State_County_City_RecordType_Name" },
-            relatives: { type: "ARRAY", items: { type: "STRING" } }
+            transcription: { type: "STRING", description: "The full text transcription of the historical record or document." },
+            geoFileName: { type: "STRING", description: "YYYY-MM-DD_Country_State_County_City_RecordType_Name" }
           },
-          required: ["ancestorName", "familyLine", "recordType", "geoFileName"]
+          required: ["primaryPerson", "eventType", "familyLine", "geoFileName"]
         }
       }
     };
@@ -96,10 +124,17 @@ Raw Text: ${data.rawText}`;
     }
     
     const geminiData = JSON.parse(geminiResponse.getContentText());
-    const extractedText = geminiData.candidates[0].content.parts[0].text;
-    const extractedJson = JSON.parse(extractedText);
+    const candidate = geminiData.candidates && geminiData.candidates[0];
+    const part = candidate && candidate.content && candidate.content.parts && candidate.content.parts[0];
+    if (!part || !part.text) {
+      throw new Error("Gemini returned no usable content (finishReason: " + (candidate && candidate.finishReason || "unknown") + ")");
+    }
+    const extractedJson = JSON.parse(part.text);
 
     // 3. File Handling & Drive Routing
+    // Note: this is Gemini's auto-detected surname, used only to bucket the Drive clipping.
+    // It's intentionally independent of `targetFamilyLine` below, which drives the sheet tab
+    // and is a persistent choice the user makes in the popup/Settings.
     const familyLine = extractedJson.familyLine || "Uncategorized";
     const baseFolderName = "Genealogy Document Clippings";
     
@@ -146,20 +181,15 @@ Raw Text: ${data.rawText}`;
 
     // 4. Append to Spreadsheet
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const tabName = "Genealogy Log";
+    const tabName = data.targetFamilyLine ? sanitizeTabName(data.targetFamilyLine) : DEFAULT_TAB_NAME;
     let sheet = ss.getSheetByName(tabName);
-    
+
     if (!sheet) {
       sheet = ss.insertSheet(tabName);
-      const headers = [
-        "Logged Date", "Primary Person", "Family Line", "Event Date", 
-        "Country", "State", "County", "City", "Record Type", 
-        "Relatives", "Citation", "Document Scan", "Source Link", "Evidence Summary", "Transcription"
-      ];
-      sheet.appendRow(headers);
-      sheet.getRange(1, 1, 1, headers.length).setBackground("#1e293b").setFontColor("#f8fafc").setFontWeight("bold");
-      sheet.setFrozenRows(1);
     }
+    // Always verify/repair row 1 against the current schema — this both seeds a brand-new
+    // tab and heals an existing tab whose headers were written under an older schema.
+    ensureHeaders(sheet);
 
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
     const scanCell = fileUrl ? `=HYPERLINK("${fileUrl}", "View Scan")` : "No scan";
@@ -176,19 +206,15 @@ Raw Text: ${data.rawText}`;
 
     const row = [
       timestamp,
-      sanitize(extractedJson.ancestorName || "Unknown"),
-      sanitize(extractedJson.familyLine || ""),
-      sanitize(extractedJson.recordDate || ""),
-      sanitize(extractedJson.country || ""),
-      sanitize(extractedJson.state || ""),
-      sanitize(extractedJson.county || ""),
-      sanitize(extractedJson.city || ""),
-      sanitize(extractedJson.recordType || ""),
+      sanitize(extractedJson.primaryPerson || "Unknown"),
+      sanitize(extractedJson.eventType || ""),
+      sanitize(extractedJson.eventDate || ""),
+      sanitize(extractedJson.eventPlace || ""),
       sanitize(relativesStr),
+      sanitize(extractedJson.collectionSource || ""),
       sanitize(extractedJson.citation || ""),
       scanCell,
       sourceCell,
-      sanitize(extractedJson.evidenceSummary || ""),
       sanitize(extractedJson.transcription || "")
     ];
 

@@ -420,6 +420,46 @@ kbd {
   color: #f1f5f9;
 }
 
+/* Family Lines */
+.family-line-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.family-line-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.family-line-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  padding: 6px 8px 6px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.family-line-chip .chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 50%;
+}
+
+.family-line-chip .chip-remove:hover {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.12);
+}
+
 /* Guide Steps */
 .guide-steps {
   padding-left: 20px;

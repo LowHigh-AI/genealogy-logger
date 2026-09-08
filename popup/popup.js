@@ -11,6 +11,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   const sendLogBtn = document.getElementById('send-log-btn');
   const copyGeminiBtn = document.getElementById('copy-gemini-btn');
   const messageArea = document.getElementById('message-area');
+  const familyLineSelect = document.getElementById('family-line-select');
+
+  // Populate the family-line picker and restore the last-active selection (sticky
+  // until the user picks a different one, per-line tab in the Google Sheet).
+  try {
+    const { familyLines = [], activeFamilyLine = '' } = await chrome.storage.sync.get(['familyLines', 'activeFamilyLine']);
+    if (familyLines.length === 0) {
+      familyLineSelect.disabled = true;
+      familyLineSelect.title = 'Add family lines in Settings to route records to their own tabs.';
+    } else {
+      familyLines.forEach((line) => {
+        const option = document.createElement('option');
+        option.value = line;
+        option.textContent = line;
+        familyLineSelect.appendChild(option);
+      });
+      familyLineSelect.value = familyLines.includes(activeFamilyLine) ? activeFamilyLine : '';
+    }
+  } catch (e) {
+    console.warn('Genealogy Logger: failed to load family lines', e);
+  }
+
+  familyLineSelect.addEventListener('change', () => {
+    chrome.storage.sync.set({ activeFamilyLine: familyLineSelect.value }).catch((e) => {
+      console.warn('Genealogy Logger: failed to persist family line selection', e);
+    });
+  });
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -129,7 +156,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         mimeType: scrapedData.media.mimeType,
         sourceUrl: scrapedData.sourceUrl,
         printUrl: scrapedData.media.printUrl,
-        apiKey: settings.apiKey || ""
+        apiKey: settings.apiKey || "",
+        targetFamilyLine: familyLineSelect.value || ""
       };
 
       const response = await fetch(settings.webhookUrl, {
