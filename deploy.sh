@@ -42,4 +42,10 @@ $CLASP push -f
 echo "→ Deploying new version to ${DEPLOY_ID:0:12}…"
 $CLASP deploy -i "$DEPLOY_ID" -d "$LABEL"
 
-echo "✓ Live. Same URL — nothing to change in Settings."
+WEBHOOK_URL="https://script.google.com/macros/s/${DEPLOY_ID}/exec"
+
+echo
+echo "✓ Live. Webhook URL (unchanged — deploying in place never rotates it):"
+echo "  $WEBHOOK_URL"
+echo
+echo "  Only paste this into Settings if the field is empty or shows a different id."

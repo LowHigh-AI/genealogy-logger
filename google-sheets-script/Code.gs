@@ -287,16 +287,64 @@ function listGeminiModels() {
   return usable;
 }
 
+// Turns escape sequences the model emitted literally back into real characters.
+// Gemini frequently double-escapes inside structured output, so "\\n" survives
+// JSON.parse as a backslash followed by an n and renders as \n in the cell.
+function normalizeText(val) {
+  if (typeof val !== "string") return val;
+  return val
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"')
+    .replace(/[ \t]+\n/g, "\n")   // trailing spaces before a break
+    .trim();
+}
+
+// Column widths that keep a long transcription readable instead of stretching the row
+// off-screen. Applied whenever the header row is written or restyled.
+const COLUMN_WIDTHS = [150, 150, 120, 110, 190, 170, 190, 220, 130, 110, 420, 220];
+const HEADER_BG = "#2e6b4f";   // heritage green, matching the extension
+const HEADER_FG = "#ffffff";
+
+function applyColumnWidths(sheet) {
+  for (let i = 0; i < COLUMN_WIDTHS.length; i++) {
+    sheet.setColumnWidth(i + 1, COLUMN_WIDTHS[i]);
+  }
+}
+
+/**
+ * Run from the editor to apply the current header row and column widths to every tab.
+ * Useful after a schema change, since ensureHeaders only reformats when it has to.
+ */
+function formatAllTabs() {
+  const sheets = getSpreadsheet().getSheets();
+  sheets.forEach(function (sheet) {
+    ensureHeaders(sheet);
+    applyColumnWidths(sheet);
+    Logger.log("Formatted: " + sheet.getName());
+  });
+}
+
 // Ensures the given sheet's row 1 matches HEADERS, rewriting it if it's missing,
 // stale (an older schema), or belongs to a brand-new tab. Never touches data rows.
 function ensureHeaders(sheet) {
   const headerRange = sheet.getRange(1, 1, 1, HEADERS.length);
   const currentHeaders = sheet.getLastRow() > 0 ? headerRange.getValues()[0] : [];
   const headersMatch = HEADERS.every((h, i) => currentHeaders[i] === h);
+
+  // Styling drifts independently of the values: a tab written by an older version has
+  // the right columns but the old palette and default widths. Heal both, so nobody has
+  // to run a formatting function by hand.
+  const styleMatch = headerRange.getBackground().toLowerCase() === HEADER_BG;
+
   if (!headersMatch) {
     headerRange.setValues([HEADERS]);
-    headerRange.setBackground("#1e293b").setFontColor("#f8fafc").setFontWeight("bold");
+  }
+  if (!headersMatch || !styleMatch) {
+    headerRange.setBackground(HEADER_BG).setFontColor(HEADER_FG).setFontWeight("bold");
     sheet.setFrozenRows(1);
+    applyColumnWidths(sheet);
   }
 }
 
@@ -375,6 +423,7 @@ function doPost(e) {
     const prompt = `You are an expert genealogist. Analyze the following raw text and document image (if provided).
 Extract the genealogical facts into a structured JSON format.
 Make sure to include a comprehensive 'transcription' of the actual historical record data if it is present in the raw text.
+Write the transcription as readable prose with real line breaks between lines of the record. Do not write escaped sequences such as \\n, and do not wrap it in JSON or markdown.
 ${data.notes ? "The researcher added this note, which may identify the person of interest: " + data.notes + "\n" : ""}Raw Text: ${data.rawText}`;
 
     let geminiContentParts = [{ text: prompt }];
@@ -529,7 +578,9 @@ ${data.notes ? "The researcher added this note, which may identify the person of
     const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
     const scanCell = fileUrl ? `=HYPERLINK("${fileUrl}", "View Scan")` : "No scan";
     const sourceCell = data.sourceUrl ? `=HYPERLINK("${data.sourceUrl}", "Open Record")` : "";
-    const relativesStr = extractedJson.relatives ? extractedJson.relatives.join("\n") : "";
+    const relativesStr = extractedJson.relatives
+      ? extractedJson.relatives.map(normalizeText).join("\n")
+      : "";
 
     const sanitize = (val) => {
       if (typeof val !== "string") return val;
@@ -547,11 +598,11 @@ ${data.notes ? "The researcher added this note, which may identify the person of
       sanitize(extractedJson.eventPlace || ""),
       sanitize(relativesStr),
       sanitize(extractedJson.collectionSource || ""),
-      sanitize(extractedJson.citation || ""),
+      sanitize(normalizeText(extractedJson.citation || "")),
       scanCell,
       sourceCell,
-      sanitize(extractedJson.transcription || ""),
-      sanitize(data.notes || "")
+      sanitize(normalizeText(extractedJson.transcription || "")),
+      sanitize(normalizeText(data.notes || ""))
     ];
 
     sheet.appendRow(row);
