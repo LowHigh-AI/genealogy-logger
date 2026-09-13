@@ -271,6 +271,35 @@
         </details>
 
         <details class="faq-item">
+          <summary>"Rate limit reached" or "you have used today's free-tier allowance"</summary>
+          <div class="faq-body">
+            <p>Free Gemini API keys allow only a limited number of requests, and a long
+            research session can exhaust them. There are two different ceilings, and the error
+            tells you which one you hit.</p>
+            <p><strong>Per-minute:</strong> handled for you. The record is queued and logged
+            automatically once the limit clears — you'll see a count on the extension icon and
+            nothing needs re-scraping.</p>
+            <p><strong>Daily:</strong> waiting won't help; it resets at midnight Pacific time.
+            Switch to a model with more headroom in <strong>Step 5</strong> above
+            (<code>gemini-flash-lite-latest</code> is the default for exactly this reason), or
+            enable billing on your Gemini key at
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="help-link">Google AI Studio</a>
+            for a far higher limit.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>What happens if I log a record while offline or rate limited?</summary>
+          <div class="faq-body">
+            <p>Nothing is lost. The captured page and your notes are saved and retried
+            automatically, and the number waiting shows on the extension icon. Logging the same
+            page again replaces the queued copy rather than creating a duplicate.</p>
+            <p>Up to 20 records can wait at once. A record that fails for a reason retrying
+            can't fix — a bad webhook URL, say — is reported rather than retried forever.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
           <summary>How do I change which Gemini model is used?</summary>
           <div class="faq-body">
             <p>Use <strong>Step 5</strong> above. Click <strong>Refresh list</strong> and the dropdown

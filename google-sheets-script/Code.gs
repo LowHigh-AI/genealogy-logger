@@ -52,11 +52,18 @@ const DEFAULT_TAB_NAME = "Genealogy Log";
 const DRIVE_FOLDER_ID = "";
 const DEFAULT_CLIPPINGS_FOLDER = "Genealogy Document Clippings";
 
-// Gemini model id. Prefer a floating "-latest" alias: Google retires numbered
-// versions while still listing them in ListModels, so a pinned id eventually starts
-// returning 404 even though it looks available. Override with a GEMINI_MODEL script
-// property or the extension's Settings; run listGeminiModels() to see the full list.
-const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
+// Gemini model id.
+//
+// Two deliberate choices here. First, a floating "-latest" alias: Google retires
+// numbered versions while still listing them in ListModels, so a pinned id eventually
+// starts returning 404 even though it looks available.
+//
+// Second, the *lite* alias. Every new user starts on a free-tier key, and the standard
+// flash models have a small daily allowance that a single research session exhausts.
+// Lite has far more headroom and is well suited to this work, which is structured
+// extraction from OCR text rather than hard reasoning. Override with a GEMINI_MODEL
+// script property or the extension's Settings; listGeminiModels() shows the full list.
+const DEFAULT_GEMINI_MODEL = "gemini-flash-lite-latest";
 const HEADERS = [
   "Logged Date", "Primary Person", "Event Type", "Event Date",
   "Event Place", "Family / Relatives", "Collection / Source",
