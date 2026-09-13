@@ -22,7 +22,14 @@
       </div>
     </header>
 
-    <main class="grid">
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab" data-panel="panel-settings" role="tab">Settings</button>
+      <button type="button" class="tab" data-panel="panel-guide" role="tab">Setup Guide</button>
+      <button type="button" class="tab" data-panel="panel-faq" role="tab">FAQ</button>
+    </nav>
+
+    <main>
+      <div class="tab-panel" id="panel-settings" role="tabpanel">
       <!-- Settings Form Card -->
       <section class="card form-card">
         <div class="card-header">
@@ -36,7 +43,7 @@
               <span class="step-num">Step 1</span>
               <label for="webhookUrl">
                 Google Sheets Webhook URL
-                <a href="#guide" class="help-link" id="viewGuideLink">See setup steps below &darr;</a>
+                <a href="#guide" class="help-link" id="viewGuideLink">Open the setup guide &rarr;</a>
               </label>
             </div>
             <input type="url" id="webhookUrl" placeholder="https://script.google.com/macros/s/.../exec">
@@ -128,7 +135,9 @@
         <div id="familyLineList" class="family-line-list"></div>
         <div id="familyLineFeedback" class="feedback-msg"></div>
       </section>
+      </div>
 
+      <div class="tab-panel" id="panel-guide" role="tabpanel">
       <!-- Setup Guide Card -->
       <section class="card guide-card" id="guide">
         <div class="card-header">
@@ -209,7 +218,9 @@
           </li>
         </ol>
       </section>
+      </div>
 
+      <div class="tab-panel" id="panel-faq" role="tabpanel">
       <!-- FAQ Card -->
       <section class="card" id="faq">
         <div class="card-header">
@@ -362,6 +373,7 @@
           </div>
         </details>
       </section>
+      </div>
     </main>
   </div>
 

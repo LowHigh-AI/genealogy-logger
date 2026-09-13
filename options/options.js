@@ -5,6 +5,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const webhookUrlInput = document.getElementById("webhookUrl");
   const sheetUrlInput = document.getElementById("sheetUrl");
   const driveFolderUrlInput = document.getElementById("driveFolderUrl");
+  const tabButtons = document.querySelectorAll(".tab");
+  const tabPanels = document.querySelectorAll(".tab-panel");
+  const viewGuideLink = document.getElementById("viewGuideLink");
   const geminiModelSelect = document.getElementById("geminiModel");
   const refreshModelsBtn = document.getElementById("refreshModelsBtn");
   const browseSheetsBtn = document.getElementById("browseSheetsBtn");
@@ -32,7 +35,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Load existing settings
   let {
     apiKey = "",
-    webhookUrl = "https://script.google.com/macros/s/AKfycbzXUrqWQuNPmhOaHKV2_Ab3MsigxesUCaM78I5ICXa9oT94-1EKM99Qq68ezyEnkbar/exec",
+    webhookUrl = "https://script.google.com/macros/s/AKfycby-L981r3JfV4lxAM7oc5Drxyi_SpfaIuojNk1iotn6cwQRymUZ0BxC4caHIMMYZCKx/exec",
     sheetUrl = "",
     driveFolderUrl = "",
     geminiModel = "",
@@ -155,6 +158,42 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     return null;
   }
+
+  // --- Tabs -----------------------------------------------------------------------
+
+  function showTab(panelId) {
+    tabButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.panel === panelId));
+    tabPanels.forEach((panel) => panel.classList.toggle("active", panel.id === panelId));
+    try {
+      localStorage.setItem("activeTab", panelId);
+    } catch (e) {
+      /* private mode - the tab just won't be remembered */
+    }
+  }
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => showTab(btn.dataset.panel));
+  });
+
+  viewGuideLink.addEventListener("click", (e) => {
+    e.preventDefault();
+    showTab("panel-guide");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  // Deep links (#guide / #faq) still work, they just switch tabs instead of scrolling.
+  const hashPanel = { "#guide": "panel-guide", "#faq": "panel-faq" }[window.location.hash];
+
+  let rememberedTab = null;
+  try {
+    rememberedTab = localStorage.getItem("activeTab");
+  } catch (e) {
+    /* ignore */
+  }
+
+  // A brand-new install opens on the guide; anyone already set up lands on Settings.
+  const isConfigured = Boolean(apiKey);
+  showTab(hashPanel || rememberedTab || (isConfigured ? "panel-settings" : "panel-guide"));
 
   // --- Gemini model picker ---
 
