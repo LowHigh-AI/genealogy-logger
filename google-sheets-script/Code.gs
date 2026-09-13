@@ -208,6 +208,32 @@ function getConfiguredModel(requested) {
 // retrying: 429 rate limit, 503 "high demand", and the 5xx gateway family.
 const GEMINI_RETRY_CODES = [429, 500, 502, 503, 504];
 const GEMINI_MAX_ATTEMPTS = 3;
+// Never hold the request open longer than this for one retry. Past it we give up and
+// tell the user how long to wait, rather than stalling the popup.
+const GEMINI_MAX_WAIT_MS = 10000;
+
+// Quota errors carry the exact wait in a RetryInfo detail (and again in the message).
+// Honouring it matters: retrying sooner cannot succeed and spends another request
+// against the very quota that is exhausted.
+function getRetryDelaySeconds(response) {
+  try {
+    const body = JSON.parse(response.getContentText());
+    const details = (body.error && body.error.details) || [];
+    for (let i = 0; i < details.length; i++) {
+      const d = details[i];
+      if (d["@type"] && d["@type"].indexOf("RetryInfo") !== -1 && d.retryDelay) {
+        const parsed = parseFloat(d.retryDelay);
+        if (!isNaN(parsed)) return parsed;
+      }
+    }
+    const msg = (body.error && body.error.message) || "";
+    const m = msg.match(/retry in ([\d.]+)\s*s/i);
+    if (m) return parseFloat(m[1]);
+  } catch (err) {
+    // no structured detail available
+  }
+  return null;
+}
 
 // Exponential backoff with jitter. Worst case adds ~5s, well inside the Apps Script
 // execution limit, and saves the user from losing a capture to a momentary spike.
@@ -218,9 +244,16 @@ function fetchGeminiWithRetry(url, options) {
     if (GEMINI_RETRY_CODES.indexOf(response.getResponseCode()) === -1) {
       return response; // succeeded, or failed for a reason retrying will not fix
     }
-    if (attempt < GEMINI_MAX_ATTEMPTS) {
-      Utilities.sleep(Math.pow(2, attempt - 1) * 1500 + Math.floor(Math.random() * 500));
-    }
+    if (attempt === GEMINI_MAX_ATTEMPTS) break;
+
+    const serverWait = getRetryDelaySeconds(response);
+    const waitMs = serverWait !== null
+      ? serverWait * 1000
+      : Math.pow(2, attempt - 1) * 1500 + Math.floor(Math.random() * 500);
+
+    // A long mandated wait means retrying here is pointless and wasteful.
+    if (waitMs > GEMINI_MAX_WAIT_MS) return response;
+    Utilities.sleep(waitMs);
   }
   return response; // still failing; the caller reports it
 }
@@ -493,11 +526,24 @@ ${data.notes ? "The researcher added this note, which may identify the person of
     if (GEMINI_RETRY_CODES.indexOf(geminiCode) !== -1) {
       // Google is overloaded, not misconfigured - say so, because the raw envelope
       // reads like something the user broke.
+      const waitSeconds = getRetryDelaySeconds(geminiResponse);
+      const waitAdvice = waitSeconds
+        ? "Try again in about " + Math.ceil(waitSeconds) + " seconds."
+        : "Wait a moment and try again.";
+
+      if (geminiCode === 429) {
+        // A quota ceiling, not congestion - different cause, different advice.
+        throw new Error(
+          "Gemini's rate limit was reached for " + geminiModel + ", so nothing was logged. " +
+          waitAdvice + " Free-tier keys allow only a small number of requests per minute; " +
+          "gemini-flash-lite-latest has more headroom, or enable billing on your Gemini key " +
+          "for a much higher limit."
+        );
+      }
       throw new Error(
-        "Gemini is busy right now (HTTP " + geminiCode + ") and did not respond after " +
-        GEMINI_MAX_ATTEMPTS + " attempts. Nothing was logged - wait a moment and try again. " +
-        "If it keeps happening, pick a lighter model such as gemini-flash-lite-latest in Settings. " +
-        "(Google said: " + geminiErrorMessage(geminiResponse) + ")"
+        "Gemini is busy right now (HTTP " + geminiCode + ") and nothing was logged. " +
+        waitAdvice + " If it persists, try a lighter model such as gemini-flash-lite-latest " +
+        "in Settings."
       );
     }
     if (geminiCode !== 200) {
