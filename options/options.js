@@ -10,6 +10,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const viewGuideLink = document.getElementById("viewGuideLink");
   const geminiModelSelect = document.getElementById("geminiModel");
   const refreshModelsBtn = document.getElementById("refreshModelsBtn");
+  const fullTestBtn = document.getElementById("fullTestBtn");
+  const copyCodeBtn = document.getElementById("copyCodeBtn");
+  const copyManifestBtn = document.getElementById("copyManifestBtn");
+  const copyStatus = document.getElementById("copyStatus");
   const browseSheetsBtn = document.getElementById("browseSheetsBtn");
   const browseFoldersBtn = document.getElementById("browseFoldersBtn");
   const pickerOverlay = document.getElementById("pickerOverlay");
@@ -35,7 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Load existing settings
   let {
     apiKey = "",
-    webhookUrl = "https://script.google.com/macros/s/AKfycby-L981r3JfV4lxAM7oc5Drxyi_SpfaIuojNk1iotn6cwQRymUZ0BxC4caHIMMYZCKx/exec",
+    webhookUrl = "",
     sheetUrl = "",
     driveFolderUrl = "",
     geminiModel = "",
@@ -261,6 +265,57 @@ document.addEventListener("DOMContentLoaded", async () => {
     } finally {
       refreshModelsBtn.disabled = false;
       refreshModelsBtn.textContent = "Refresh list";
+    }
+  });
+
+  // --- Copy the Apps Script files -------------------------------------------------
+
+  async function copyBundledFile(path, label) {
+    try {
+      const res = await fetch(chrome.runtime.getURL(path));
+      if (!res.ok) throw new Error(`could not read ${path}`);
+      await navigator.clipboard.writeText(await res.text());
+      copyStatus.textContent = `✓ ${label} copied`;
+    } catch (err) {
+      copyStatus.textContent = `✗ ${err.message}`;
+    }
+    setTimeout(() => { copyStatus.textContent = ""; }, 4000);
+  }
+
+  copyCodeBtn.addEventListener("click", () => copyBundledFile("google-sheets-script/Code.gs", "Code.gs"));
+  copyManifestBtn.addEventListener("click", () => copyBundledFile("google-sheets-script/appsscript.json", "appsscript.json"));
+
+  // --- Full test --------------------------------------------------------------------
+  // Test Connection deliberately skips Gemini, so a retired model or a bad key still
+  // looks healthy. This exercises the model too, without writing a row.
+  fullTestBtn.addEventListener("click", async () => {
+    const { webhook, key } = webhookSettings();
+    if (!webhook || !key) {
+      showFeedback("Please enter both the Webhook URL and API Key.", "error");
+      return;
+    }
+
+    fullTestBtn.disabled = true;
+    fullTestBtn.textContent = "Testing...";
+    showFeedback("Asking Gemini to read a sample record…", "info");
+
+    try {
+      const result = await callWebhook({
+        dryRun: true,
+        rawText: "Sample record for configuration testing. Name: Jane Doe. Born 1880 in Springfield, Illinois. Father: John Doe.",
+        spreadsheetId: parseSpreadsheetId(sheetUrlInput.value) || "",
+        geminiModel: geminiModelSelect.value || ""
+      });
+      const person = result.extractedData && result.extractedData.primaryPerson;
+      showFeedback(
+        `✓ ${result.message}${person ? ` It read the sample person as "${person}".` : ""}`,
+        "success"
+      );
+    } catch (err) {
+      showFeedback(`✗ Full test failed: ${err.message}`, "error");
+    } finally {
+      fullTestBtn.disabled = false;
+      fullTestBtn.textContent = "Run Full Test";
     }
   });
 
@@ -551,12 +606,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   function updateStatusBadge(key, webhook) {
-    if (key && webhook) {
+    const missing = [];
+    if (!webhook) missing.push("webhook URL");
+    if (!key) missing.push("API key");
+
+    if (missing.length === 0) {
       overallStatus.classList.add("ready");
-      statusText.textContent = "Ready to Log";
+      // A blank sheet setting is valid (the script falls back to its bound sheet),
+      // so this is a note rather than an error.
+      statusText.textContent = sheetUrlInput.value.trim()
+        ? "Ready to Log"
+        : "Ready — using the script's own sheet";
     } else {
       overallStatus.classList.remove("ready");
-      statusText.textContent = "Configuration Incomplete";
+      statusText.textContent = `Needs your ${missing.join(" and ")}`;
     }
   }
 

@@ -1,25 +1,46 @@
 // popup.js
+import { capturePage } from '../lib/capture.js';
+import { submitLog } from '../lib/submit.js';
 
-let scrapedData = null;
+let capture = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
   const statusBadge = document.getElementById('status-badge');
   const urlPreview = document.getElementById('url-preview');
   const mediaPreview = document.getElementById('media-preview');
   const textPreview = document.getElementById('text-preview');
-  
+  const notesInput = document.getElementById('notes-input');
+
   const sendLogBtn = document.getElementById('send-log-btn');
+  const retryBtn = document.getElementById('retry-btn');
   const copyGeminiBtn = document.getElementById('copy-gemini-btn');
   const messageArea = document.getElementById('message-area');
   const familyLineSelect = document.getElementById('family-line-select');
+  const addLinesLink = document.getElementById('add-lines-link');
+  const settingsBtn = document.getElementById('settings-btn');
 
-  // Populate the family-line picker and restore the last-active selection (sticky
-  // until the user picks a different one, per-line tab in the Google Sheet).
+  settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+  addLinesLink.addEventListener('click', () => chrome.runtime.openOptionsPage());
+
+  function setStatus(text, kind) {
+    statusBadge.textContent = text;
+    statusBadge.className = kind ? `badge ${kind}` : 'badge';
+  }
+
+  function showMessage(html, type) {
+    messageArea.innerHTML = html;
+    messageArea.className = `message ${type}`;
+  }
+
+  // --- Family line picker -------------------------------------------------
   try {
-    const { familyLines = [], activeFamilyLine = '' } = await chrome.storage.sync.get(['familyLines', 'activeFamilyLine']);
+    const { familyLines = [], activeFamilyLine = '' } =
+      await chrome.storage.sync.get(['familyLines', 'activeFamilyLine']);
+
     if (familyLines.length === 0) {
-      familyLineSelect.disabled = true;
-      familyLineSelect.title = 'Add family lines in Settings to route records to their own tabs.';
+      // An empty disabled dropdown told the user nothing; point them at Settings.
+      familyLineSelect.classList.add('hidden');
+      addLinesLink.classList.remove('hidden');
     } else {
       familyLines.forEach((line) => {
         const option = document.createElement('option');
@@ -39,166 +60,100 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    if (!tab || !tab.url || tab.url.startsWith('chrome://')) {
-      throw new Error("Cannot scrape this page.");
-    }
-    
-    urlPreview.textContent = tab.url;
+  // --- Capture ------------------------------------------------------------
+  async function runCapture() {
+    setStatus('Reading…', 'loading');
+    retryBtn.classList.add('hidden');
+    messageArea.className = 'message hidden';
+    mediaPreview.textContent = 'Scanning…';
+    textPreview.textContent = 'Scanning…';
 
-    // Inject content script if not already injected (MV3 scripting)
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['content/content.js']
-    });
-
-    // Extract text from ALL frames to ensure no dropdown/iframe context is missed
-    const textResults = await chrome.scripting.executeScript({
-      target: { tabId: tab.id, allFrames: true },
-      func: () => {
-        return document.documentElement.innerText.replace(/\s+/g, ' ').trim();
-      }
-    });
-    const combinedText = textResults.map(r => r.result).filter(t => t.length > 0).join('\n\n--- Additional Frame Context ---\n\n');
-
-    // Send message to content script to scrape media
-    chrome.tabs.sendMessage(tab.id, { action: "scrape_data" }, async (response) => {
-      if (chrome.runtime.lastError || !response || !response.success) {
-        throw new Error(chrome.runtime.lastError?.message || response?.error || "Failed to scrape page.");
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
+        throw new Error('Chrome blocks extensions on this page. Open a record first.');
       }
 
-      scrapedData = response;
-      scrapedData.rawText = combinedText; // Override with comprehensive multi-frame text
-      
-      // Update UI
-      textPreview.textContent = scrapedData.rawText.substring(0, 100) + "...";
-      
-      // Handle Background Capture if needed
-      if (response.media.needsBackgroundCapture) {
-        mediaPreview.textContent = "Capturing viewport...";
-        try {
-          const captureResponse = await chrome.runtime.sendMessage({ action: "captureViewportForTab" });
-          if (captureResponse && captureResponse.success) {
-            response.media.fileBase64 = captureResponse.dataUrl.split(',')[1];
-            response.media.mimeType = 'image/jpeg';
-            mediaPreview.textContent = "Viewport Captured (JPEG)";
-          } else {
-            mediaPreview.textContent = "Viewport Capture Failed";
-          }
-        } catch (e) {
-          mediaPreview.textContent = "Viewport Capture Error";
-        }
-      } else if (response.media.fileBase64) {
-        mediaPreview.textContent = "Image Extracted (" + response.media.mimeType + ")";
-      } else if (response.media.printUrl) {
-        mediaPreview.textContent = "Fetching High-Res Image...";
-        try {
-          const res = await fetch(response.media.printUrl);
-          const blob = await res.blob();
-          const reader = new FileReader();
-          reader.readAsDataURL(blob);
-          await new Promise((resolve) => {
-            reader.onloadend = () => {
-              response.media.fileBase64 = reader.result.split(',')[1];
-              resolve();
-            };
-          });
-          mediaPreview.textContent = "High-Res Image Fetched (" + response.media.mimeType + ")";
-        } catch (e) {
-          console.warn("Failed to fetch printUrl locally", e);
-          mediaPreview.textContent = "Print URL Found (Fetch Failed)";
-        }
-      } else {
-        mediaPreview.textContent = "No primary media found";
-      }
+      urlPreview.textContent = tab.url;
+      capture = await capturePage(tab);
+
+      mediaPreview.textContent = capture.media.label || 'No image found';
+      const chars = capture.rawText.length;
+      textPreview.textContent = chars
+        ? `${chars.toLocaleString()} characters captured`
+        : 'No text found on this page';
 
       sendLogBtn.disabled = false;
       copyGeminiBtn.disabled = false;
-      statusBadge.textContent = "Ready";
-    });
-
-  } catch (error) {
-    statusBadge.textContent = "Error";
-    statusBadge.className = "badge error";
-    urlPreview.textContent = "Error";
-    mediaPreview.textContent = "-";
-    textPreview.textContent = error.message;
+      setStatus('Ready');
+    } catch (error) {
+      capture = null;
+      sendLogBtn.disabled = true;
+      copyGeminiBtn.disabled = true;
+      mediaPreview.textContent = '–';
+      textPreview.textContent = '–';
+      setStatus('Failed', 'error');
+      showMessage(escapeHtml(error.message), 'error');
+      retryBtn.classList.remove('hidden');
+    }
   }
 
-  // --- Actions ---
+  retryBtn.addEventListener('click', runCapture);
+  await runCapture();
 
-  function showMessage(msg, type) {
-    messageArea.textContent = msg;
-    messageArea.className = `message ${type}`;
-  }
-
+  // --- Send ---------------------------------------------------------------
   sendLogBtn.addEventListener('click', async () => {
-    if (!scrapedData) return;
-    
+    if (!capture) return;
+
     sendLogBtn.disabled = true;
-    sendLogBtn.textContent = "Sending...";
-    statusBadge.textContent = "Sending";
-    statusBadge.className = "badge loading";
-    messageArea.className = "message hidden";
+    sendLogBtn.textContent = 'Sending…';
+    setStatus('Sending', 'loading');
+    messageArea.className = 'message hidden';
 
     try {
-      // Retrieve settings (webhookUrl, apiKey) from storage
-      const settings = await chrome.storage.sync.get(['webhookUrl', 'apiKey', 'spreadsheetId', 'driveFolderId', 'geminiModel']);
-      if (!settings.webhookUrl) {
-        throw new Error("Web App URL not set in extension options.");
-      }
-
-      const payload = {
-        rawText: scrapedData.rawText,
-        fileBase64: scrapedData.media.fileBase64,
-        mimeType: scrapedData.media.mimeType,
-        sourceUrl: scrapedData.sourceUrl,
-        printUrl: scrapedData.media.printUrl,
-        apiKey: settings.apiKey || "",
-        targetFamilyLine: familyLineSelect.value || "",
-        spreadsheetId: settings.spreadsheetId || "",
-        driveFolderId: settings.driveFolderId || "",
-        geminiModel: settings.geminiModel || ""
-      };
-
-      const response = await fetch(settings.webhookUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-          'x-api-key': payload.apiKey
-        },
-        body: JSON.stringify(payload)
+      const result = await submitLog({
+        capture,
+        notes: notesInput.value.trim(),
+        familyLine: familyLineSelect.value || ''
       });
 
-      const result = await response.json();
-      
-      if (result.status === 'success') {
-        showMessage("Successfully logged!", "success");
-        statusBadge.textContent = "Success";
-        statusBadge.className = "badge success";
-      } else {
-        throw new Error(result.message || "Unknown server error");
-      }
+      // The webhook tells us exactly where the row landed — show it.
+      const links = [];
+      if (result.spreadsheetUrl) links.push(`<a href="${result.spreadsheetUrl}" target="_blank">Open sheet</a>`);
+      if (result.scanUrl) links.push(`<a href="${result.scanUrl}" target="_blank">View scan</a>`);
+
+      showMessage(
+        `Logged to <strong>${escapeHtml(result.tab)}</strong> · row ${result.rowAdded}` +
+        (links.length ? `<div class="message-links">${links.join('')}</div>` : ''),
+        'success'
+      );
+      setStatus('Logged', 'success');
+      notesInput.value = '';
     } catch (e) {
-      showMessage(e.message, "error");
-      statusBadge.textContent = "Failed";
-      statusBadge.className = "badge error";
+      showMessage(escapeHtml(e.message), 'error');
+      setStatus('Failed', 'error');
     } finally {
       sendLogBtn.disabled = false;
-      sendLogBtn.textContent = "Send to Log";
+      sendLogBtn.textContent = 'Send to Log';
     }
   });
 
   copyGeminiBtn.addEventListener('click', () => {
-    if (!scrapedData) return;
-    
-    const prompt = `LOG\n\nURL: ${scrapedData.sourceUrl}\n\nRAW TEXT:\n${scrapedData.rawText}`;
-    navigator.clipboard.writeText(prompt).then(() => {
-      showMessage("Copied to clipboard!", "success");
-    }).catch(err => {
-      showMessage("Failed to copy.", "error");
-    });
+    if (!capture) return;
+    const notes = notesInput.value.trim();
+    const prompt =
+      `LOG\n\nURL: ${capture.sourceUrl}\n\n` +
+      (notes ? `NOTES:\n${notes}\n\n` : '') +
+      `RAW TEXT:\n${capture.rawText}`;
+
+    navigator.clipboard.writeText(prompt)
+      .then(() => showMessage('Copied to clipboard.', 'success'))
+      .catch(() => showMessage('Could not copy to clipboard.', 'error'));
   });
 });
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}

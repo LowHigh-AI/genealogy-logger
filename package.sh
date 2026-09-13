@@ -12,7 +12,10 @@ rm -f "$OUTPUT_ZIP"
 zip -r "$OUTPUT_ZIP" \
   manifest.json \
   background.js \
+  lib \
+  styles \
   content \
+  popup \
   icons \
   options \
   google-sheets-script \

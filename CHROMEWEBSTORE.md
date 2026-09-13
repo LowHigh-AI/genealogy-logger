@@ -10,7 +10,7 @@
 `Genealogy Logger`
 
 **Short Description (132 chars max)**  
-`Instantly extract and log genealogical records, documents, and citations to Google Sheets using Gemini AI.`
+`Extract and log genealogical records, documents, and citations to your own Google Sheet using Gemini AI.`
 
 **Category**  
 `Productivity` or `Search Tools`
@@ -25,18 +25,17 @@ Genealogy Logger is an archivist's companion that turns web-based family history
 Whether you are viewing census records, gravestone memorials, military rosters, or historical newspapers, Genealogy Logger extracts the core biographical details, family relationships, and formal citations, and appends them to your personal Google Sheet.
 
 KEY FEATURES:
-• Address Bar Quick-Log: Type "log" followed by Space or Tab in your Chrome address bar, add any notes, and press Enter.
-• One-Click Logging: Click the toolbar icon or press Command+Shift+L (Mac) / Ctrl+Shift+L (Windows).
+• Notes: Add your own note to any record before logging it — it is saved alongside the record and given to the AI as context.
+• One-Click Logging: Click the toolbar icon or press Command+Shift+L (Mac) / Ctrl+Shift+L (Windows) to preview and send, or right-click any page and choose "Log this page" to log it straight away.
 • Specialized Archive Scrapers: Built-in DOM extractors for FamilySearch, MyHeritage, GenealogyBank, Find a Grave, Chronicling America (Library of Congress), National Archives (NARA), BLM Land Records, Internet Archive, WikiTree, and BillionGraves.
-• Multi-Modal AI Precision: Combines on-page metadata with high-resolution visual document capture analyzed by Google Gemini 3.6 Flash to eliminate handwriting transcription errors.
-• Google Drive Document Archive: Automatically saves document clippings to a "Genealogy Document Clippings" Google Drive folder and links them in your spreadsheet.
+• Multi-Modal AI Precision: Combines on-page metadata with high-resolution visual document capture analyzed by Google Gemini to reduce handwriting transcription errors. You choose the model from a live list in Settings.
+• Google Drive Document Archive: Saves document clippings to a Drive folder you choose (or an auto-created "Genealogy Document Clippings" folder), sorted into surname subfolders and linked from your spreadsheet.
 • Family Line Routing: Add your ancestral surnames in Settings, then pick the active one from the popup — it stays selected until you change it, and each family line logs to its own tab in your Google Sheet.
-• Duplicate Protection: Alerts you if you already logged a record from that URL.
 
 HOW TO USE:
 1. Open the extension Settings to link your free Gemini API key and Google Sheet Webhook URL.
 2. Navigate to any genealogical record online.
-3. Click the extension icon, press Cmd/Ctrl+Shift+L, or type "log" in the Chrome address bar.
+3. Click the extension icon, press Cmd/Ctrl+Shift+L, or right-click the page.
 4. Watch the confirmation badge turn green as your record is saved!
 
 PRIVACY FIRST:
@@ -49,14 +48,12 @@ Genealogy Logger does not track your browsing history or sell any data. It opera
 
 | Permission | Type | User-Facing Justification |
 | :--- | :--- | :--- |
-| `activeTab` | permissions | Required to capture a visual screenshot of the historical document and access the active tab's URL only when explicitly triggered by the user. |
+| `tabs` / `activeTab` | permissions | Required to capture a visual screenshot of the historical document and read the active tab's URL, only when the user explicitly triggers a log. |
 | `scripting` | permissions | Required to inject the metadata extractor script on user gesture to extract structured genealogical table fields, names, and citation text. |
 | `storage` | permissions | Required to safely store the user's personal Gemini API key, Google Sheets Webhook URL, and tab routing preferences locally. |
-| `notifications` | permissions | Required to display status confirmation or error feedback to the user when logging completes. |
-| `contextMenus` | permissions | Required to provide a "Log Genealogy Record" action when right-clicking text, images, or pages. |
-| `https://script.google.com/*` | host_permissions | Required to transmit the extracted record JSON payload to the user's personal Google Apps Script Webhook. |
-| `https://script.googleusercontent.com/*` | host_permissions | Required to handle Google Apps Script redirect responses upon spreadsheet appending. |
-| `https://generativelanguage.googleapis.com/*` | host_permissions | Required to communicate with the Google Gemini API to parse and structure the historical record. |
+| `notifications` | permissions | Required to report success or failure when a record is logged from the right-click menu, where no popup is open to show the result. |
+| `contextMenus` | permissions | Required to provide the "Log this page to Genealogy Logger" action when right-clicking a page, selection, image, or link. |
+| `<all_urls>` | host_permissions | Genealogical records live on an open-ended set of archive sites, and many serve their high-resolution document scans from per-record or CDN hosts that cannot be enumerated in advance. The extension fetches that image **in the user's own authenticated session**, because subscription archives (Ancestry, MyHeritage, Findmypast) will not serve it to a server-side request. It also needs to reach the user's personal Apps Script endpoint at `script.google.com` / `script.googleusercontent.com`. No page is read or fetched without an explicit user gesture — clicking the toolbar icon, using the keyboard shortcut, or choosing the right-click menu item. |
 
 ---
 
@@ -64,7 +61,7 @@ Genealogy Logger does not track your browsing history or sell any data. It opera
 
 - **Does the extension collect user data?** No central servers. Data is only processed between the user's browser, Google Gemini, and the user's own Google Sheet.
 - **Data Categories checked in Dashboard:**
-  - *Website Content*: Processed strictly upon user gesture (clicking log or typing omnibox command) to extract genealogical data.
+  - *Website Content*: Processed strictly upon user gesture (clicking log, using the shortcut, or the right-click menu) to extract genealogical data.
   - *Personally Identifiable Information*: Only historical genealogical names/dates extracted from public archives for insertion into the user's personal sheet.
 - **Certifications**:
   - [x] Data is NOT sold to third parties.

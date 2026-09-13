@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Genealogy Logger Settings</title>
+  <link rel="stylesheet" href="../styles/theme.css">
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
@@ -111,6 +112,7 @@
           <div class="button-row">
             <button type="submit" class="btn btn-primary" id="saveBtn">Save Settings</button>
             <button type="button" class="btn btn-secondary" id="testBtn">Test Connection</button>
+            <button type="button" class="btn btn-secondary" id="fullTestBtn">Run Full Test</button>
           </div>
           <div id="saveFeedback" class="feedback-msg"></div>
         </form>
@@ -165,8 +167,13 @@
 
           <li>
             <strong>Paste in the script.</strong>
-            Delete the sample code, paste the contents of <code>google-sheets-script/Code.gs</code>
-            from the extension folder, and save with <kbd>⌘</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+            Delete the sample code, paste in <code>Code.gs</code>, and save with
+            <kbd>⌘</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+            <span class="copy-row">
+              <button type="button" class="btn btn-secondary btn-sm" id="copyCodeBtn">Copy Script Code</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="copyManifestBtn">Copy appsscript.json</button>
+              <span class="copy-status" id="copyStatus"></span>
+            </span>
           </li>
 
           <li>

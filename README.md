@@ -2,7 +2,7 @@
 
 ![Genealogy Logger Banner](social-preview.png)
 
-Log genealogical records from FamilySearch, MyHeritage, GenealogyBank, Find a Grave, Chronicling America, NARA, BLM Land Records, Internet Archive, and more directly into Google Sheets using Gemini 3.6 Flash.
+Log genealogical records from FamilySearch, MyHeritage, GenealogyBank, Find a Grave, Chronicling America, NARA, BLM Land Records, Internet Archive, and more directly into Google Sheets using Google Gemini.
 
 ---
 
@@ -48,10 +48,9 @@ When viewing any historical document or record online:
 
 | Method | How to Trigger |
 | :--- | :--- |
-| **Address Bar (Omnibox)** | Click address bar, type `log` + <kbd>Space</kbd> or <kbd>Tab</kbd>, add any notes, and press <kbd>Enter</kbd> |
-| **Toolbar Button** | Click the 📜 extension icon in your Chrome toolbar |
-| **Keyboard Shortcut** | Press <kbd>⌘+Shift+L</kbd> (Mac) or <kbd>Ctrl+Shift+L</kbd> (Windows) |
-| **Right-Click** | Right-click anywhere on the page and select **Log Genealogy Record to Google Sheets** |
+| **Toolbar Button** | Click the 📜 extension icon to preview the page, add notes, and send |
+| **Keyboard Shortcut** | Press <kbd>⌘+Shift+L</kbd> (Mac) or <kbd>Ctrl+Shift+L</kbd> (Windows) to open the same preview |
+| **Right-Click** | Right-click the page and choose **Log this page to Genealogy Logger** to log it immediately, without the preview |
 
 ---
 

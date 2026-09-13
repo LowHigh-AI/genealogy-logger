@@ -59,7 +59,7 @@ const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const HEADERS = [
   "Logged Date", "Primary Person", "Event Type", "Event Date",
   "Event Place", "Family / Relatives", "Collection / Source",
-  "Citation", "Document Scan (Drive Link)", "Source Link", "Transcription"
+  "Citation", "Document Scan (Drive Link)", "Source Link", "Transcription", "Notes"
 ];
 
 // Google Sheets forbids : \ / ? * [ ] in a tab name and caps it at 100 chars.
@@ -304,7 +304,7 @@ function doPost(e) {
     const prompt = `You are an expert genealogist. Analyze the following raw text and document image (if provided).
 Extract the genealogical facts into a structured JSON format.
 Make sure to include a comprehensive 'transcription' of the actual historical record data if it is present in the raw text.
-Raw Text: ${data.rawText}`;
+${data.notes ? "The researcher added this note, which may identify the person of interest: " + data.notes + "\n" : ""}Raw Text: ${data.rawText}`;
 
     let geminiContentParts = [{ text: prompt }];
 
@@ -370,6 +370,17 @@ Raw Text: ${data.rawText}`;
       throw new Error("Gemini returned no usable content (finishReason: " + (candidate && candidate.finishReason || "unknown") + ")");
     }
     const extractedJson = JSON.parse(part.text);
+
+    // 2b. Dry run from the Settings page: the model answered, so configuration is
+    // sound. Stop before touching Drive or the sheet.
+    if (data.dryRun === true) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        message: "Gemini responded using " + geminiModel + ". Nothing was written.",
+        model: geminiModel,
+        extractedData: extractedJson
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
 
     // 3. File Handling & Drive Routing
     // Note: this is Gemini's auto-detected surname, used only to bucket the Drive clipping.
@@ -447,7 +458,8 @@ Raw Text: ${data.rawText}`;
       sanitize(extractedJson.citation || ""),
       scanCell,
       sourceCell,
-      sanitize(extractedJson.transcription || "")
+      sanitize(extractedJson.transcription || ""),
+      sanitize(data.notes || "")
     ];
 
     sheet.appendRow(row);
@@ -458,6 +470,7 @@ Raw Text: ${data.rawText}`;
       status: "success",
       tab: tabName,
       rowAdded: lastRow,
+      spreadsheetUrl: ss.getUrl(),
       scanUrl: fileUrl || null,
       extractedData: extractedJson
     })).setMimeType(ContentService.MimeType.JSON);

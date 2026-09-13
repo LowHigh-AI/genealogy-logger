@@ -1,0 +1,107 @@
+/* ==========================================================================
+   Genealogy Logger — Archival Parchment theme
+   Shared by the popup and the options page. Link this BEFORE the page's own
+   stylesheet so those files can override individual rules if they need to.
+
+   Light is the default. Dark follows the OS and is deliberately *warm* (aged
+   leather, not cold navy) so the extension reads as the same product at night.
+   ========================================================================== */
+
+:root {
+  /* Surfaces */
+  --bg-main: #faf7f0;      /* parchment page */
+  --bg-card: #ffffff;      /* panels */
+  --bg-input: #fdfbf7;     /* fields */
+  --bg-subtle: #f3eee4;    /* insets, hover fills, step groups */
+
+  /* Lines & text */
+  --border-color: #e4ddd0;
+  --border-focus: #2e6b4f;
+  --text-primary: #2b2823; /* warm near-black */
+  --text-secondary: #6b6358;
+  --text-muted: #8c8272;
+
+  /* Heritage green */
+  --accent: #2e6b4f;
+  --accent-hover: #245740;
+  --accent-contrast: #ffffff;           /* text on an accent fill */
+  --accent-soft: rgba(46, 107, 79, 0.1); /* tinted backgrounds */
+  --accent-glow: rgba(46, 107, 79, 0.18);
+
+  /* Aged gold — borders, rules and filled chips only.
+     ~4.5:1 on parchment, so never small text directly on --bg-main. */
+  --gold: #b07d2b;
+  --gold-soft: rgba(176, 125, 43, 0.12);
+
+  /* Status */
+  --success: #2e6b4f;
+  --success-soft: rgba(46, 107, 79, 0.1);
+  --error: #a33a2a;
+  --error-soft: rgba(163, 58, 42, 0.1);
+  --warning: #b07d2b;
+  --info: #2f6b86;
+  --info-soft: rgba(47, 107, 134, 0.1);
+
+  /* Depth */
+  --scrim: rgba(43, 40, 35, 0.45);
+  --shadow-card: 0 1px 2px rgba(43, 40, 35, 0.05), 0 4px 16px -6px rgba(43, 40, 35, 0.1);
+  --shadow-modal: 0 24px 60px -12px rgba(43, 40, 35, 0.35);
+
+  --radius: 12px;
+
+  /* A system serif carries the archival signal without a webfont — MV3's CSP
+     blocks remote stylesheets, so this avoids bundling font files entirely. */
+  --font-serif: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Legacy alias — options.css referenced this name before the retheme. */
+  --font-family: var(--font-sans);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-main: #1a1714;
+    --bg-card: #24201b;
+    --bg-input: #15120f;
+    --bg-subtle: #2b2620;
+
+    --border-color: #3a332b;
+    --border-focus: #5fa37e;
+    --text-primary: #f2ede4;
+    --text-secondary: #b5aa99;
+    --text-muted: #8a8071;
+
+    --accent: #5fa37e;
+    --accent-hover: #74b692;
+    --accent-contrast: #14231c;
+    --accent-soft: rgba(95, 163, 126, 0.14);
+    --accent-glow: rgba(95, 163, 126, 0.25);
+
+    --gold: #d4a24c;
+    --gold-soft: rgba(212, 162, 76, 0.16);
+
+    --success: #5fa37e;
+    --success-soft: rgba(95, 163, 126, 0.14);
+    --error: #e0836f;
+    --error-soft: rgba(224, 131, 111, 0.14);
+    --warning: #d4a24c;
+    --info: #7fb3cc;
+    --info-soft: rgba(127, 179, 204, 0.14);
+
+    --scrim: rgba(10, 8, 6, 0.6);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px -6px rgba(0, 0, 0, 0.45);
+    --shadow-modal: 0 24px 60px -12px rgba(0, 0, 0, 0.65);
+  }
+}
+
+/* Shared primitives ------------------------------------------------------- */
+
+h1, h2, h3, .logo {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+code, kbd {
+  font-family: var(--font-mono);
+}
