@@ -52,10 +52,11 @@ const DEFAULT_TAB_NAME = "Genealogy Log";
 const DRIVE_FOLDER_ID = "";
 const DEFAULT_CLIPPINGS_FOLDER = "Genealogy Document Clippings";
 
-// Gemini model id. Google retires these periodically, so it is overridable without a code
-// edit: set a GEMINI_MODEL script property to switch. Run listGeminiModels() from the
-// editor to see what your key can currently use.
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+// Gemini model id. Prefer a floating "-latest" alias: Google retires numbered
+// versions while still listing them in ListModels, so a pinned id eventually starts
+// returning 404 even though it looks available. Override with a GEMINI_MODEL script
+// property or the extension's Settings; run listGeminiModels() to see the full list.
+const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
 const HEADERS = [
   "Logged Date", "Primary Person", "Event Type", "Event Date",
   "Event Place", "Family / Relatives", "Collection / Source",
@@ -203,6 +204,72 @@ function getConfiguredModel(requested) {
   return model.trim().replace(/^models\//, "");
 }
 
+// Gemini returns these when it is busy rather than misconfigured, so they are worth
+// retrying: 429 rate limit, 503 "high demand", and the 5xx gateway family.
+const GEMINI_RETRY_CODES = [429, 500, 502, 503, 504];
+const GEMINI_MAX_ATTEMPTS = 3;
+
+// Exponential backoff with jitter. Worst case adds ~5s, well inside the Apps Script
+// execution limit, and saves the user from losing a capture to a momentary spike.
+function fetchGeminiWithRetry(url, options) {
+  let response = null;
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {
+    response = UrlFetchApp.fetch(url, options);
+    if (GEMINI_RETRY_CODES.indexOf(response.getResponseCode()) === -1) {
+      return response; // succeeded, or failed for a reason retrying will not fix
+    }
+    if (attempt < GEMINI_MAX_ATTEMPTS) {
+      Utilities.sleep(Math.pow(2, attempt - 1) * 1500 + Math.floor(Math.random() * 500));
+    }
+  }
+  return response; // still failing; the caller reports it
+}
+
+// Pulls the human-readable line out of Gemini's error envelope.
+function geminiErrorMessage(response) {
+  try {
+    const body = JSON.parse(response.getContentText());
+    if (body && body.error && body.error.message) return body.error.message;
+  } catch (err) {
+    // fall through to the raw text
+  }
+  return response.getContentText();
+}
+
+// Models that can't do this job, however healthy they look in ListModels: speech,
+// image generation, transcription-only, robotics, research agents and Gemma.
+const SPECIALIST_MODEL_PATTERN =
+  /tts|audio|speech|image|transcribe|robotics|computer-use|customtools|deep-research|lyria|embedding|banana|veo|imagen/;
+
+// The subset worth showing a user: Gemini text models that accept an image alongside
+// the prompt, ranked so the best default is first. Floating "-latest" aliases lead
+// because they survive Google retiring numbered versions; then newest flash, then pro.
+function filterUsableModels(names, exclude) {
+  const usable = names.filter(function (n) {
+    return n.indexOf("gemini") === 0 && n !== exclude && !SPECIALIST_MODEL_PATTERN.test(n);
+  });
+
+  const version = function (n) {
+    const m = n.match(/gemini-(\d+(?:\.\d+)?)/);
+    return m ? parseFloat(m[1]) : 0;
+  };
+  const tier = function (n) {
+    if (/-latest$/.test(n)) return /flash/.test(n) ? 0 : 1;
+    if (/preview/.test(n)) return 4;
+    return /flash/.test(n) ? 2 : 3;
+  };
+
+  usable.sort(function (a, b) {
+    return tier(a) - tier(b) || version(b) - version(a) || a.localeCompare(b);
+  });
+  return usable;
+}
+
+// Short, actionable list for an error message.
+function suggestGeminiModels(names, exclude) {
+  return filterUsableModels(names, exclude).slice(0, 6);
+}
+
 /**
  * Run this from the editor to list the models your key can use, then set the winner as a
  * GEMINI_MODEL script property. Useful when Google retires the configured model and
@@ -213,9 +280,11 @@ function listGeminiModels() {
   if (!apiKey) throw new Error("GEMINI_API_KEY not set in Script Properties");
 
   const names = getAvailableGeminiModels(apiKey);
-  Logger.log("Currently configured: " + (PropertiesService.getScriptProperties().getProperty("GEMINI_MODEL") || DEFAULT_GEMINI_MODEL));
-  Logger.log("Available models (" + names.length + "):\n" + names.join("\n"));
-  return names;
+  const usable = filterUsableModels(names);
+  Logger.log("Currently configured: " + getConfiguredModel());
+  Logger.log("Recommended for this script (" + usable.length + "):\n" + usable.join("\n"));
+  Logger.log("\nEverything the key can call (" + names.length + "):\n" + names.join("\n"));
+  return usable;
 }
 
 // Ensures the given sheet's row 1 matches HEADERS, rewriting it if it's missing,
@@ -272,9 +341,11 @@ function doPost(e) {
     if (data.listModels === true) {
       const listKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
       if (!listKey) throw new Error("GEMINI_API_KEY not set in Script Properties");
+      const allModels = getAvailableGeminiModels(listKey);
       return ContentService.createTextOutput(JSON.stringify({
         status: "success",
-        models: getAvailableGeminiModels(listKey),
+        models: filterUsableModels(allModels),
+        allModels: allModels,
         scriptDefault: getConfiguredModel()
       })).setMimeType(ContentService.MimeType.JSON);
     }
@@ -347,20 +418,41 @@ ${data.notes ? "The researcher added this note, which may identify the person of
       muteHttpExceptions: true
     };
 
-    const geminiResponse = UrlFetchApp.fetch(geminiUrl, geminiOptions);
+    const geminiResponse = fetchGeminiWithRetry(geminiUrl, geminiOptions);
     if (geminiResponse.getResponseCode() === 404) {
-      // Almost always a retired model id. Say which ids actually work right now.
+      // Almost always a retired model id. Note that a retired model often still
+      // appears in ListModels, so "it was in the list" does not mean it is callable.
       const available = getAvailableGeminiModels(geminiApiKey);
+      if (!available.length) {
+        throw new Error(
+          "Gemini model '" + geminiModel + "' returned 404, and the model list could not " +
+          "be read either - check that GEMINI_API_KEY is valid."
+        );
+      }
+      const listed = available.indexOf(geminiModel) !== -1;
       throw new Error(
-        "Gemini model '" + geminiModel + "' is not available to this API key. " +
-        (available.length
-          ? "Pick a different one in the extension's Settings (Gemini Model), or set a " +
-            "GEMINI_MODEL script property. Available: " + available.join(", ")
-          : "Could not list available models - check that GEMINI_API_KEY is valid.")
+        "Gemini model '" + geminiModel + "' would not run" +
+        (listed
+          ? " even though it is still listed - Google has most likely retired it. "
+          : " and is not available to this API key. ") +
+        "Pick another in the extension's Settings (Gemini Model), or set a GEMINI_MODEL " +
+        "script property. Recommended: " + suggestGeminiModels(available, geminiModel).join(", ") +
+        " (" + available.length + " models available in total)."
       );
     }
-    if (geminiResponse.getResponseCode() !== 200) {
-      throw new Error("Gemini API Error: " + geminiResponse.getContentText());
+    const geminiCode = geminiResponse.getResponseCode();
+    if (GEMINI_RETRY_CODES.indexOf(geminiCode) !== -1) {
+      // Google is overloaded, not misconfigured - say so, because the raw envelope
+      // reads like something the user broke.
+      throw new Error(
+        "Gemini is busy right now (HTTP " + geminiCode + ") and did not respond after " +
+        GEMINI_MAX_ATTEMPTS + " attempts. Nothing was logged - wait a moment and try again. " +
+        "If it keeps happening, pick a lighter model such as gemini-flash-lite-latest in Settings. " +
+        "(Google said: " + geminiErrorMessage(geminiResponse) + ")"
+      );
+    }
+    if (geminiCode !== 200) {
+      throw new Error("Gemini API error " + geminiCode + ": " + geminiErrorMessage(geminiResponse));
     }
     
     const geminiData = JSON.parse(geminiResponse.getContentText());

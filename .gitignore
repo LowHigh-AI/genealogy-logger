@@ -14,3 +14,10 @@ scratch/
 .env
 .env.local
 config.local.json
+
+# clasp — local Apps Script link and credentials.
+# .clasp-deployment is effectively a credential: with the API key it grants write
+# access to the linked sheet and Drive folder.
+.clasp.json
+.clasprc.json
+.clasp-deployment

@@ -10,6 +10,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const viewGuideLink = document.getElementById("viewGuideLink");
   const geminiModelSelect = document.getElementById("geminiModel");
   const refreshModelsBtn = document.getElementById("refreshModelsBtn");
+  const modelStatus = document.getElementById("modelStatus");
+  const toggleAllModels = document.getElementById("toggleAllModels");
   const fullTestBtn = document.getElementById("fullTestBtn");
   const copyCodeBtn = document.getElementById("copyCodeBtn");
   const copyManifestBtn = document.getElementById("copyManifestBtn");
@@ -44,6 +46,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     driveFolderUrl = "",
     geminiModel = "",
     geminiModelList = [],
+    geminiModelListAll = [],
+    geminiScriptDefault = "",
     familyLines = []
   } = await chrome.storage.sync.get([
     "apiKey",
@@ -52,6 +56,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     "driveFolderUrl",
     "geminiModel",
     "geminiModelList",
+    "geminiModelListAll",
+    "geminiScriptDefault",
     "familyLines"
   ]);
 
@@ -60,6 +66,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   sheetUrlInput.value = sheetUrl;
   driveFolderUrlInput.value = driveFolderUrl;
   renderModelOptions(geminiModelList, geminiModel);
+  renderModelStatus();
 
   updateStatusBadge(apiKey, webhookUrl);
   renderFamilyLines();
@@ -202,34 +209,65 @@ document.addEventListener("DOMContentLoaded", async () => {
   // --- Gemini model picker ---
 
   // Rebuilds the dropdown. Keeps a previously chosen model selectable even if it is no
-  // longer in the list, so a stale selection is visible rather than silently dropped.
+  // longer in the list, so a stale selection stays visible rather than silently vanishing.
   function renderModelOptions(models, selected) {
     geminiModelSelect.innerHTML = "";
 
     const auto = document.createElement("option");
     auto.value = "";
-    auto.textContent = "Automatic (script default)";
+    // Spell out what "Automatic" actually resolves to, so the dropdown is never ambiguous.
+    auto.textContent = geminiScriptDefault
+      ? `Automatic — currently ${geminiScriptDefault}`
+      : "Automatic (script default)";
     geminiModelSelect.appendChild(auto);
 
-    const names = (models || []).slice().sort();
+    const names = (models || []).slice();
     if (selected && names.indexOf(selected) === -1) {
       names.unshift(selected);
     }
 
-    names.forEach((name) => {
+    // The script returns the list pre-ranked, so the first entry is the best default.
+    names.forEach((name, i) => {
       const option = document.createElement("option");
       option.value = name;
-      option.textContent = name;
+      option.textContent = i === 0 && !selected ? `${name} — recommended` : name;
       geminiModelSelect.appendChild(option);
     });
 
     geminiModelSelect.value = selected || "";
   }
 
-  refreshModelsBtn.addEventListener("click", async () => {
-    const key = apiKeyInput.value.trim();
-    const webhook = webhookUrlInput.value.trim();
+  // One line that always answers "so which model is being used?"
+  function renderModelStatus() {
+    const chosen = geminiModelSelect.value;
+    if (chosen) {
+      modelStatus.innerHTML = `Using <span class="model-name">${chosen}</span> — your explicit choice.`;
+    } else if (geminiScriptDefault) {
+      modelStatus.innerHTML =
+        `Using <span class="model-name">${geminiScriptDefault}</span> — chosen automatically by the script.`;
+    } else {
+      modelStatus.innerHTML = "Click <strong>Refresh list</strong> to see which models your Gemini key can use.";
+    }
+  }
 
+  geminiModelSelect.addEventListener("change", renderModelStatus);
+
+  let showingAllModels = false;
+  toggleAllModels.addEventListener("click", () => {
+    showingAllModels = !showingAllModels;
+    const list = showingAllModels ? geminiModelListAll : geminiModelList;
+    if (!list.length) {
+      showFeedback("Click Refresh list first.", "error");
+      showingAllModels = false;
+      return;
+    }
+    toggleAllModels.textContent = showingAllModels ? "Show recommended only" : "Show all models";
+    renderModelOptions(list, geminiModelSelect.value);
+    renderModelStatus();
+  });
+
+  refreshModelsBtn.addEventListener("click", async () => {
+    const { webhook, key } = webhookSettings();
     if (!webhook || !key) {
       showFeedback("Enter and save your Webhook URL and API Key first — the Gemini key lives in your Apps Script project, so the list comes from there.", "error");
       return;
@@ -239,27 +277,36 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshModelsBtn.textContent = "Loading...";
 
     try {
-      const res = await fetch(webhook, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8", "x-api-key": key },
-        body: JSON.stringify({ listModels: true, apiKey: key })
-      });
-
-      const result = await res.json();
-      if (result.status !== "success") {
-        throw new Error(result.message || "Webhook returned an error.");
-      }
+      const result = await callWebhook({ listModels: true });
 
       const models = result.models || [];
       if (models.length === 0) {
-        showFeedback("No models returned. Check the GEMINI_API_KEY script property in your Apps Script project.", "error");
+        showFeedback("No usable models returned. Check the GEMINI_API_KEY script property in your Apps Script project.", "error");
         return;
       }
 
-      const keep = models.indexOf(geminiModelSelect.value) !== -1 ? geminiModelSelect.value : "";
+      geminiModelList = models;
+      geminiModelListAll = result.allModels || models;
+      geminiScriptDefault = result.scriptDefault || "";
+      showingAllModels = false;
+      toggleAllModels.textContent = "Show all models";
+
+      const keep = geminiModelListAll.indexOf(geminiModelSelect.value) !== -1 ? geminiModelSelect.value : "";
       renderModelOptions(models, keep);
-      await chrome.storage.sync.set({ geminiModelList: models });
-      showFeedback(`✓ Found ${models.length} models. The script currently defaults to ${result.scriptDefault || "its built-in model"}.`, "success");
+      renderModelStatus();
+
+      await chrome.storage.sync.set({
+        geminiModelList: geminiModelList,
+        geminiModelListAll: geminiModelListAll,
+        geminiScriptDefault: geminiScriptDefault
+      });
+
+      const hidden = geminiModelListAll.length - models.length;
+      showFeedback(
+        `✓ ${models.length} suitable models found` +
+        (hidden > 0 ? ` (${hidden} speech/image/research models hidden)` : "") + ".",
+        "success"
+      );
     } catch (err) {
       showFeedback(`✗ Could not load models: ${err.message}`, "error");
     } finally {

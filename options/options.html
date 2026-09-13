@@ -106,7 +106,8 @@
               </select>
               <button type="button" class="btn btn-secondary btn-sm" id="refreshModelsBtn">Refresh list</button>
             </div>
-            <p class="field-hint">Click <strong>Refresh list</strong> to ask your webhook which models your Gemini key can currently use. Pick one if Google retires the default. Choose a model that accepts images, since scans are sent along with the text.</p>
+            <p class="model-status" id="modelStatus">Click <strong>Refresh list</strong> to see which models your Gemini key can use.</p>
+            <p class="field-hint">The list is filtered to Gemini models that can read a document image alongside the text — speech, image-generation and research models are hidden. <button type="button" class="link-btn" id="toggleAllModels">Show all models</button></p>
           </div>
 
           <div class="button-row">
