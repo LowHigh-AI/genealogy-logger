@@ -5,7 +5,8 @@
  * - Family-line tab routing: the extension popup sends a persistent "targetFamilyLine"
  *   (configured & selected by the user in Settings/popup) and each family line gets its
  *   own sheet tab, auto-created with a self-healing header row.
- * - Automatic Google Drive clipping storage (saves document screenshot to Drive folder)
+ * - Google Drive clipping storage, into a folder you choose in Settings (or an
+ *   auto-created "Genealogy Document Clippings" folder), sorted into surname subfolders
  * - Hyperlinked columns for Document Scan & Source URL
  * - Auto-formatting & column sizing
  * 
@@ -17,20 +18,25 @@
  *    editor", then paste in the appsscript.json from this same folder. This declares
  *    the OAuth scopes the script needs - without the external_request scope you get
  *    "You do not have permission to call UrlFetchApp.fetch" at runtime.
- * 5. Select "forceAuth" in the function dropdown and click Run. Approve the permission
+ * 5. In Project Settings > Script Properties add GEMINI_API_KEY (your Gemini key) and
+ *    GAS_SECRET_KEY (any password, matching the extension settings). GEMINI_MODEL is
+ *    optional - set it to override the default model, e.g. after Google retires one.
+ *    Run listGeminiModels() to see what your key can call.
+ * 6. Select "forceAuth" in the function dropdown and click Run. Approve the permission
  *    prompt (Advanced > Go to project (unsafe) > Allow). This is the ONLY reliable way
  *    to trigger the consent screen - running doGet will not, because it touches no
  *    protected services and therefore requires no scopes.
- * 6. Click "Deploy" > "New deployment" > Select type "Web app".
- * 7. Set "Execute as": "Me" and "Who has access": "Anyone".
- * 8. Click "Deploy" and copy the Web app URL.
- * 9. Paste the Web app URL into the Genealogy Logger extension settings, along with
- *    your Google Sheet's URL (Settings > Step 3). That is what tells the script which
- *    spreadsheet to write to - no id needs to be hardcoded here.
+ * 7. Click "Deploy" > "New deployment" > Select type "Web app".
+ * 8. Set "Execute as": "Me" and "Who has access": "Anyone".
+ * 9. Click "Deploy" and copy the Web app URL.
+ * 10. Paste the Web app URL into the Genealogy Logger extension settings, along with
+ *    your Google Sheet's URL (Settings > Step 3) and optionally a Drive folder URL for
+ *    document scans (Step 4). Those tell the script where to write - nothing needs to
+ *    be hardcoded here.
  *
  * IMPORTANT: authorization is granted per Google account. Whichever account you are
  * signed in as when you deploy is the account the web app executes as, so it must be
- * the same account that approved the prompt in step 5.
+ * the same account that approved the prompt in step 6.
  */
 
 // Normally leave blank. The extension sends the target sheet from its Settings page,
@@ -39,6 +45,17 @@
 // sheet URL: docs.google.com/spreadsheets/d/<THIS PART>/edit
 const SPREADSHEET_ID = "";
 const DEFAULT_TAB_NAME = "Genealogy Log";
+
+// Where document clippings are filed. Normally blank - the extension sends the folder
+// from its Settings page. Set this to pin one in code; copy the id from the folder URL:
+// drive.google.com/drive/folders/<THIS PART>
+const DRIVE_FOLDER_ID = "";
+const DEFAULT_CLIPPINGS_FOLDER = "Genealogy Document Clippings";
+
+// Gemini model id. Google retires these periodically, so it is overridable without a code
+// edit: set a GEMINI_MODEL script property to switch. Run listGeminiModels() from the
+// editor to see what your key can currently use.
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const HEADERS = [
   "Logged Date", "Primary Person", "Event Type", "Event Date",
   "Event Place", "Family / Relatives", "Collection / Source",
@@ -80,6 +97,27 @@ function getSpreadsheet(requestedId) {
   );
 }
 
+// Resolves the base folder for document clippings, in the same priority order as the
+// spreadsheet: the id the extension sends, then DRIVE_FOLDER_ID, then a folder named
+// DEFAULT_CLIPPINGS_FOLDER in the account's Drive (created if it doesn't exist yet).
+function getClippingsFolder(requestedId) {
+  const id = (requestedId || "").toString().trim() || DRIVE_FOLDER_ID;
+
+  if (id) {
+    try {
+      return DriveApp.getFolderById(id);
+    } catch (err) {
+      throw new Error(
+        "Could not open Drive folder id '" + id + "'. Check that it matches the /folders/<ID> " +
+        "portion of the folder's URL and that " + getAccountLabel() + " can open it. (" + err.message + ")"
+      );
+    }
+  }
+
+  const existing = DriveApp.getFoldersByName(DEFAULT_CLIPPINGS_FOLDER);
+  return existing.hasNext() ? existing.next() : DriveApp.createFolder(DEFAULT_CLIPPINGS_FOLDER);
+}
+
 // Best-effort account name for error messages; never let it break the real error.
 function getAccountLabel() {
   try {
@@ -87,6 +125,97 @@ function getAccountLabel() {
   } catch (err) {
     return "this account";
   }
+}
+
+// Model ids that this API key can currently call generateContent on.
+function getAvailableGeminiModels(apiKey) {
+  const res = UrlFetchApp.fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models?key=" + apiKey,
+    { muteHttpExceptions: true }
+  );
+  if (res.getResponseCode() !== 200) return [];
+
+  const models = JSON.parse(res.getContentText()).models || [];
+  return models
+    .filter((m) => (m.supportedGenerationMethods || []).indexOf("generateContent") !== -1)
+    .map((m) => (m.name || "").replace(/^models\//, ""));
+}
+
+// --- Drive browsing for the Settings pickers -------------------------------------
+// These run here rather than in the extension on purpose: this script is already
+// authorized for Drive, so the extension needs no OAuth client and no restricted
+// scopes. It also guarantees anything listed is visible to the account that writes.
+
+const BROWSE_LIMIT = 300;
+
+// Subfolders of parentId (or My Drive when omitted), plus breadcrumb info.
+function listDriveFolders(parentId) {
+  const id = (parentId || "").toString().trim();
+  const current = id ? DriveApp.getFolderById(id) : DriveApp.getRootFolder();
+
+  const folders = [];
+  const it = current.getFolders();
+  while (it.hasNext() && folders.length < BROWSE_LIMIT) {
+    const f = it.next();
+    folders.push({ id: f.getId(), name: f.getName() });
+  }
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Root has no parent; anything else may have several - the first is enough to go up.
+  let parent = null;
+  const rootId = DriveApp.getRootFolder().getId();
+  if (current.getId() !== rootId) {
+    const parents = current.getParents();
+    parent = parents.hasNext()
+      ? { id: parents.next().getId(), name: "Up one level" }
+      : { id: rootId, name: "My Drive" };
+  }
+
+  return {
+    current: { id: current.getId(), name: current.getId() === rootId ? "My Drive" : current.getName(), url: current.getUrl() },
+    parent: parent,
+    folders: folders
+  };
+}
+
+// Spreadsheets this account can open, newest first, optionally name-filtered.
+function listDriveSheets(query) {
+  const term = (query || "").toString().trim().replace(/['"\\]/g, "");
+  const files = term
+    ? DriveApp.searchFiles('mimeType = "application/vnd.google-apps.spreadsheet" and title contains "' + term + '" and trashed = false')
+    : DriveApp.getFilesByType(MimeType.GOOGLE_SHEETS);
+
+  const sheets = [];
+  while (files.hasNext() && sheets.length < BROWSE_LIMIT) {
+    const f = files.next();
+    sheets.push({ id: f.getId(), name: f.getName(), updated: f.getLastUpdated().getTime() });
+  }
+  sheets.sort((a, b) => b.updated - a.updated);
+  return sheets;
+}
+
+// The model to call, in priority order: what the extension sends (Settings dropdown),
+// then a GEMINI_MODEL script property, then the constant above.
+function getConfiguredModel(requested) {
+  const model = (requested || "").toString().trim()
+    || PropertiesService.getScriptProperties().getProperty("GEMINI_MODEL")
+    || DEFAULT_GEMINI_MODEL;
+  return model.trim().replace(/^models\//, "");
+}
+
+/**
+ * Run this from the editor to list the models your key can use, then set the winner as a
+ * GEMINI_MODEL script property. Useful when Google retires the configured model and
+ * logging starts failing with a 404.
+ */
+function listGeminiModels() {
+  const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+  if (!apiKey) throw new Error("GEMINI_API_KEY not set in Script Properties");
+
+  const names = getAvailableGeminiModels(apiKey);
+  Logger.log("Currently configured: " + (PropertiesService.getScriptProperties().getProperty("GEMINI_MODEL") || DEFAULT_GEMINI_MODEL));
+  Logger.log("Available models (" + names.length + "):\n" + names.join("\n"));
+  return names;
 }
 
 // Ensures the given sheet's row 1 matches HEADERS, rewriting it if it's missing,
@@ -122,11 +251,55 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 1b. Connection test from the Settings page. Confirms the endpoint, the API key and
+    // which spreadsheet we resolve to - without calling Gemini or writing a row.
+    if (data.test === true) {
+      const testSheet = getSpreadsheet(data.spreadsheetId);
+      const testFolder = getClippingsFolder(data.driveFolderId);
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        message: "Connected. Logging to \"" + testSheet.getName() + "\", scans to \"" + testFolder.getName() + "\".",
+        spreadsheet: testSheet.getName(),
+        spreadsheetUrl: testSheet.getUrl(),
+        driveFolder: testFolder.getName(),
+        driveFolderUrl: testFolder.getUrl(),
+        account: getAccountLabel()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 1c. Model list for the Settings page dropdown. The Gemini key lives here, not in the
+    // extension, so the options page asks us rather than calling Google directly.
+    if (data.listModels === true) {
+      const listKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+      if (!listKey) throw new Error("GEMINI_API_KEY not set in Script Properties");
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        models: getAvailableGeminiModels(listKey),
+        scriptDefault: getConfiguredModel()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 1d. Drive pickers in the Settings page.
+    if (data.listFolders === true) {
+      const result = listDriveFolders(data.parentId);
+      result.status = "success";
+      return ContentService.createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (data.listSheets === true) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        sheets: listDriveSheets(data.query)
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 2. Gemini API Call for Structured Data
     const geminiApiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
     if (!geminiApiKey) throw new Error("GEMINI_API_KEY not set in Script Properties");
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+    const geminiModel = getConfiguredModel(data.geminiModel);
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiApiKey}`;
     
     const prompt = `You are an expert genealogist. Analyze the following raw text and document image (if provided).
 Extract the genealogical facts into a structured JSON format.
@@ -175,6 +348,17 @@ Raw Text: ${data.rawText}`;
     };
 
     const geminiResponse = UrlFetchApp.fetch(geminiUrl, geminiOptions);
+    if (geminiResponse.getResponseCode() === 404) {
+      // Almost always a retired model id. Say which ids actually work right now.
+      const available = getAvailableGeminiModels(geminiApiKey);
+      throw new Error(
+        "Gemini model '" + geminiModel + "' is not available to this API key. " +
+        (available.length
+          ? "Pick a different one in the extension's Settings (Gemini Model), or set a " +
+            "GEMINI_MODEL script property. Available: " + available.join(", ")
+          : "Could not list available models - check that GEMINI_API_KEY is valid.")
+      );
+    }
     if (geminiResponse.getResponseCode() !== 200) {
       throw new Error("Gemini API Error: " + geminiResponse.getContentText());
     }
@@ -192,15 +376,7 @@ Raw Text: ${data.rawText}`;
     // It's intentionally independent of `targetFamilyLine` below, which drives the sheet tab
     // and is a persistent choice the user makes in the popup/Settings.
     const familyLine = extractedJson.familyLine || "Uncategorized";
-    const baseFolderName = "Genealogy Document Clippings";
-    
-    let baseFolder;
-    const baseFolders = DriveApp.getFoldersByName(baseFolderName);
-    if (baseFolders.hasNext()) {
-      baseFolder = baseFolders.next();
-    } else {
-      baseFolder = DriveApp.createFolder(baseFolderName);
-    }
+    const baseFolder = getClippingsFolder(data.driveFolderId);
 
     let familyFolder;
     const familyFolders = baseFolder.getFoldersByName(familyLine);

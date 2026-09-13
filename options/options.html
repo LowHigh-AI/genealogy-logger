@@ -64,8 +64,41 @@
                 Google Sheet URL
               </label>
             </div>
-            <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
+            <div class="model-row">
+              <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
+              <button type="button" class="btn btn-secondary btn-sm" id="browseSheetsBtn">Browse…</button>
+            </div>
             <p class="field-hint">Paste the full URL of the sheet you want records written to. Leave blank if you created the Apps Script from inside that sheet (Extensions &gt; Apps Script) &mdash; it will use that sheet automatically.</p>
+          </div>
+
+          <div class="form-group step-group">
+            <div class="step-badge-label">
+              <span class="step-num">Step 4</span>
+              <label for="driveFolderUrl">
+                Google Drive Folder <span style="font-weight:400;color:var(--text-muted)">(optional)</span>
+              </label>
+            </div>
+            <div class="model-row">
+              <input type="url" id="driveFolderUrl" placeholder="https://drive.google.com/drive/folders/...">
+              <button type="button" class="btn btn-secondary btn-sm" id="browseFoldersBtn">Browse…</button>
+            </div>
+            <p class="field-hint">Where document scans are filed. Open the folder in Drive and copy its address. Records are still sorted into a subfolder per surname inside it. Leave blank to use an auto-created "Genealogy Document Clippings" folder.</p>
+          </div>
+
+          <div class="form-group step-group">
+            <div class="step-badge-label">
+              <span class="step-num">Step 5</span>
+              <label for="geminiModel">
+                Gemini Model <span style="font-weight:400;color:var(--text-muted)">(optional)</span>
+              </label>
+            </div>
+            <div class="model-row">
+              <select id="geminiModel">
+                <option value="">Automatic (script default)</option>
+              </select>
+              <button type="button" class="btn btn-secondary btn-sm" id="refreshModelsBtn">Refresh list</button>
+            </div>
+            <p class="field-hint">Click <strong>Refresh list</strong> to ask your webhook which models your Gemini key can currently use. Pick one if Google retires the default. Choose a model that accepts images, since scans are sent along with the text.</p>
           </div>
 
           <div class="button-row">
@@ -96,19 +129,265 @@
         <div id="familyLineFeedback" class="feedback-msg"></div>
       </section>
 
-      <!-- Apps Script Guide Card -->
+      <!-- Setup Guide Card -->
       <section class="card guide-card" id="guide">
         <div class="card-header">
-          <h2>Google Sheet Webhook Setup</h2>
+          <h2>First-Time Setup Guide</h2>
+          <span class="badge">~5 minutes</span>
         </div>
-        <ol class="guide-steps">
-          <li>Deploy the provided Code.gs to your Google Apps Script project.</li>
-          <li>In your GAS project settings, add the <strong>GEMINI_API_KEY</strong> script property with your Gemini API key.</li>
-          <li>Add the <strong>GAS_SECRET_KEY</strong> script property with a secure password (e.g., <code>GENEALOGY_SECRET_2026</code>).</li>
-          <li>Deploy as a Web App and paste the URL and Secret Key above.</li>
+        <p class="field-hint" style="margin-bottom: 18px;">
+          You only do this once. It connects three things: a Google Sheet to store records,
+          an Apps Script that writes to it, and a Gemini key that reads the documents.
+        </p>
+
+        <ol class="guide-steps guide-steps-major">
+          <li>
+            <strong>Get a free Gemini API key.</strong>
+            Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="help-link">Google AI Studio</a>,
+            sign in, click <strong>Create API key</strong>, and copy it (it starts with <code>AIzaSy…</code>).
+          </li>
+
+          <li>
+            <strong>Open your Sheet's script editor.</strong>
+            Create a sheet at <a href="https://sheets.new" target="_blank" rel="noopener" class="help-link">sheets.new</a>
+            (or open an existing one), then choose <strong>Extensions &gt; Apps Script</strong> from its menu.
+            Starting from inside the sheet matters — it links the script to that sheet.
+          </li>
+
+          <li>
+            <strong>Paste in the script.</strong>
+            Delete the sample code, paste the contents of <code>google-sheets-script/Code.gs</code>
+            from the extension folder, and save with <kbd>⌘</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd>.
+          </li>
+
+          <li>
+            <strong>Add the permissions manifest.</strong>
+            Click the gear icon (<strong>Project Settings</strong>) and tick
+            <strong>"Show 'appsscript.json' manifest file in editor"</strong>. Go back to the editor,
+            open the new <code>appsscript.json</code>, and replace it with the one from the same folder.
+            <span class="guide-note">Skipping this causes the most common failure:
+            <em>"You do not have permission to call UrlFetchApp.fetch."</em></span>
+          </li>
+
+          <li>
+            <strong>Add your two secrets.</strong>
+            In <strong>Project Settings &gt; Script Properties</strong>, add:
+            <ul class="guide-sublist">
+              <li><code>GEMINI_API_KEY</code> — the key from step 1.</li>
+              <li><code>GAS_SECRET_KEY</code> — any password you invent. You'll paste the same one into Step 2 above.</li>
+              <li><code>GEMINI_MODEL</code> — optional. Only needed to override the default model,
+              e.g. after Google retires one.</li>
+            </ul>
+          </li>
+
+          <li>
+            <strong>Authorize the script.</strong>
+            Pick <code>forceAuth</code> in the function dropdown at the top and click <strong>Run</strong>.
+            Approve the prompt: <strong>Advanced</strong> &rarr; <strong>Go to … (unsafe)</strong> &rarr; <strong>Allow</strong>.
+            <span class="guide-note">The warning is Google flagging your own unverified script — it's expected.
+            Note which account the log line names; the script runs as that account from now on.</span>
+          </li>
+
+          <li>
+            <strong>Deploy it as a web app.</strong>
+            <strong>Deploy &gt; New deployment &gt; Web app</strong>, with
+            <strong>Execute as: Me</strong> and <strong>Who has access: Anyone</strong>.
+            Click <strong>Deploy</strong> and copy the <strong>Web app URL</strong>.
+          </li>
+
+          <li>
+            <strong>Fill in the fields above</strong> — the web app URL, your
+            <code>GAS_SECRET_KEY</code>, your sheet's URL, and optionally a Drive folder for scans —
+            then click <strong>Save Settings</strong> followed by <strong>Test Connection</strong>.
+            Success names both the sheet and the folder it will write to.
+          </li>
+
+          <li>
+            <strong>Optional: add your family lines.</strong>
+            Each one gets its own tab in the sheet. Pick the active one from the extension popup
+            before logging; it stays selected until you change it.
+          </li>
         </ol>
       </section>
+
+      <!-- FAQ Card -->
+      <section class="card" id="faq">
+        <div class="card-header">
+          <h2>Troubleshooting &amp; FAQ</h2>
+        </div>
+
+        <details class="faq-item">
+          <summary>"You do not have permission to call UrlFetchApp.fetch"</summary>
+          <div class="faq-body">
+            <p>The script was never granted the <code>script.external_request</code> scope, which it needs
+            to reach Gemini. Do steps 4 and 6 of the guide: add <code>appsscript.json</code>, then run
+            <code>forceAuth</code> and approve the prompt.</p>
+            <p>Running <code>doGet</code> will <em>not</em> trigger the prompt — it touches no protected
+            services, so Google has nothing to ask about. And the log button can't trigger it either:
+            those requests arrive anonymously, with no browser session to show a dialog in.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>"Service Spreadsheets failed while accessing document with id …"</summary>
+          <div class="faq-body">
+            <p>That ID doesn't point to a sheet the script's account can open — it's wrong, deleted, or
+            owned by a different Google account.</p>
+            <p>Paste your sheet's full URL into <strong>Step 3</strong> above and save. If it still fails,
+            compare the account <code>forceAuth</code> logged against the account that owns the sheet:
+            a web app runs as whoever deployed it, not as whoever is using the extension.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>"models/… is not found for API version v1beta" (404)</summary>
+          <div class="faq-body">
+            <p>Google retired the model the script was set to use. You don't need to edit the code —
+            the error message now lists the model ids your key can actually call.</p>
+            <p>Pick one and add it as a <code>GEMINI_MODEL</code> script property in your Apps Script
+            project (<strong>Project Settings &gt; Script Properties</strong>). To see the full list
+            yourself, run <code>listGeminiModels</code> from the editor's function dropdown and check
+            the execution log.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>How do I change which Gemini model is used?</summary>
+          <div class="faq-body">
+            <p>Use <strong>Step 5</strong> above. Click <strong>Refresh list</strong> and the dropdown
+            fills with the models your API key can actually call right now — the list comes from Google,
+            so a retired model simply stops appearing.</p>
+            <p>Leave it on <strong>Automatic</strong> to let the script decide (its <code>GEMINI_MODEL</code>
+            script property, or its built-in default). Refreshing needs your webhook URL and API key saved
+            first, since the Gemini key lives in the Apps Script project rather than in the extension.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>"403 Forbidden" when logging</summary>
+          <div class="faq-body">
+            <p>The API key in <strong>Step 2</strong> doesn't match the <code>GAS_SECRET_KEY</code> script
+            property in your Apps Script project. They must be identical, including case. If you never set
+            that property, the script falls back to <code>GENEALOGY_SECRET_2026</code>.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Does my web app URL change when I redeploy?</summary>
+          <div class="faq-body">
+            <p>Only if you create a <em>new</em> deployment. To publish code changes without changing the
+            URL, use <strong>Deploy &gt; Manage deployments</strong>, click the pencil on the existing
+            deployment, set <strong>Version: New version</strong>, and deploy.</p>
+            <p>Choosing "New deployment" each time leaves old deployments running old code at old URLs,
+            which gets confusing fast. Editing the script and saving alone changes nothing that's live —
+            you must push a new version.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>I edited the script but nothing changed</summary>
+          <div class="faq-body">
+            <p>Saving in the editor doesn't update the live web app. Deploy a new version (see above).
+            If you changed extension files instead, reload the extension at
+            <code>chrome://extensions</code>.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>My columns don't line up with the headers</summary>
+          <div class="faq-body">
+            <p>This self-corrects now. On every log, the script checks row 1 against the expected columns
+            and rewrites it if it doesn't match, so a tab created under an older layout gets repaired
+            automatically.</p>
+            <p>Rows written <em>before</em> that fix aren't moved — their values still sit under whatever
+            columns they landed in, so older entries may need a manual once-over.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>What are Family Lines, and what do they do?</summary>
+          <div class="faq-body">
+            <p>They're your research targets — typically one per ancestral surname. Add them in the card
+            above, then pick the active one from the extension popup. Each line writes to its own tab in
+            your sheet, created automatically on first use.</p>
+            <p>Your choice persists until you change it, so a research session on one branch stays in one
+            place. Removing a line only takes it out of the picker; the tab and its records stay.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Where do the document images go?</summary>
+          <div class="faq-body">
+            <p>Into whichever folder you set in <strong>Step 4</strong> above, or a
+            <strong>Genealogy Document Clippings</strong> folder created automatically if you leave that
+            blank. Either way they're filed in a subfolder named for the surname Gemini detected, and the
+            sheet's "Document Scan" column links to each file.</p>
+            <p>That surname grouping is automatic and separate from the family-line tab you selected.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Can I choose where document scans are saved?</summary>
+          <div class="faq-body">
+            <p>Yes — click <strong>Browse…</strong> next to <strong>Step 4</strong> and pick the folder,
+            or paste its address if you prefer. The same works for your sheet in Step 3.</p>
+            <p>Browsing goes through your own Apps Script rather than asking you to sign in again, so
+            there's no extra Google permission to grant — and everything listed is guaranteed to be
+            visible to the account that does the writing.</p>
+            <p>Inside whichever folder you pick, scans are still sorted into a subfolder named for the
+            surname Gemini detected in the record. Leave the field blank and the script falls back to a
+            <strong>Genealogy Document Clippings</strong> folder it creates in the Drive of the account
+            running the script. <strong>Test Connection</strong> reports the folder it resolved, so you
+            can confirm it before logging anything.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Who can see my data?</summary>
+          <div class="faq-body">
+            <p>There's no server in the middle. The page text and image go from your browser to your own
+            Apps Script, which calls Gemini with your own API key and writes to your own sheet and Drive.</p>
+            <p>Your web app is deployed as "Anyone", so treat the URL and API key as a password pair —
+            together they let someone write to the sheets and Drive of the account that deployed it.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Nothing is detected on the page I'm viewing</summary>
+          <div class="faq-body">
+            <p>The extension reads the page you have open, so make sure the record itself is on screen and
+            expanded before clicking the icon. It can't read <code>chrome://</code> pages or the Chrome Web
+            Store. If no image is found it falls back to a screenshot of the visible area — so scroll the
+            document into view first.</p>
+          </div>
+        </details>
+      </section>
     </main>
+  </div>
+
+  <!-- Drive picker -->
+  <div class="picker-overlay hidden" id="pickerOverlay">
+    <div class="picker" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+      <div class="picker-header">
+        <h3 id="pickerTitle">Choose a folder</h3>
+        <button type="button" class="picker-close" id="pickerClose" title="Close">&times;</button>
+      </div>
+
+      <div class="picker-toolbar">
+        <div class="picker-crumb" id="pickerCrumb">My Drive</div>
+        <input type="search" id="pickerSearch" class="picker-search hidden" placeholder="Search by name…">
+      </div>
+
+      <div class="picker-list" id="pickerList"></div>
+
+      <div class="picker-footer">
+        <span class="picker-status" id="pickerStatus"></span>
+        <div class="picker-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="pickerCancel">Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" id="pickerSelect">Select this folder</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="options.js"></script>
