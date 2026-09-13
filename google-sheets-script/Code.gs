@@ -258,6 +258,35 @@ function fetchGeminiWithRetry(url, options) {
   return response; // still failing; the caller reports it
 }
 
+// Quota failures name which ceiling was hit, e.g.
+// "GenerateRequestsPerDayPerProjectPerModel-FreeTier" vs "...PerMinute...".
+// The distinction matters: a per-minute cap clears on its own, a daily one does not,
+// and queueing against a daily cap would retry pointlessly for hours.
+function getQuotaViolation(response) {
+  try {
+    const body = JSON.parse(response.getContentText());
+    const details = (body.error && body.error.details) || [];
+    for (let i = 0; i < details.length; i++) {
+      const d = details[i];
+      if (d["@type"] && d["@type"].indexOf("QuotaFailure") !== -1) {
+        const v = (d.violations || [])[0];
+        if (v) {
+          const id = v.quotaId || "";
+          return {
+            id: id,
+            value: v.quotaValue || "",
+            perDay: /PerDay/i.test(id),
+            perMinute: /PerMinute/i.test(id)
+          };
+        }
+      }
+    }
+  } catch (err) {
+    // no structured quota detail
+  }
+  return null;
+}
+
 // Pulls the human-readable line out of Gemini's error envelope.
 function geminiErrorMessage(response) {
   try {
@@ -385,8 +414,12 @@ function doPost(e) {
   const lock = LockService.getScriptLock();
   const gotLock = lock.tryLock(30000);
   if (!gotLock) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Server busy, please try again." }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: "Another record is being logged right now.",
+      retryable: true,
+      retryAfter: 30
+    })).setMimeType(ContentService.MimeType.JSON);
   }
 
   try {
@@ -531,20 +564,37 @@ ${data.notes ? "The researcher added this note, which may identify the person of
         ? "Try again in about " + Math.ceil(waitSeconds) + " seconds."
         : "Wait a moment and try again.";
 
+      let transient;
       if (geminiCode === 429) {
-        // A quota ceiling, not congestion - different cause, different advice.
-        throw new Error(
-          "Gemini's rate limit was reached for " + geminiModel + ", so nothing was logged. " +
-          waitAdvice + " Free-tier keys allow only a small number of requests per minute; " +
-          "gemini-flash-lite-latest has more headroom, or enable billing on your Gemini key " +
-          "for a much higher limit."
+        const quota = getQuotaViolation(geminiResponse);
+        if (quota && quota.perDay) {
+          // Waiting will not help today, so say so plainly instead of offering a retry.
+          transient = new Error(
+            "You have used today's free-tier allowance for " + geminiModel +
+            (quota.value ? " (" + quota.value + " requests per day)" : "") + ". " +
+            "It resets at midnight Pacific time. To keep working now, switch to a " +
+            "different model in Settings - gemini-flash-lite-latest has a much larger " +
+            "free allowance - or enable billing on your Gemini key."
+          );
+          transient.retryable = false; // queueing this would retry for hours
+        } else {
+          transient = new Error(
+            "Gemini's per-minute rate limit was reached for " + geminiModel +
+            (quota && quota.value ? " (" + quota.value + " requests/minute)" : "") + ". " +
+            waitAdvice + " This one will be retried automatically."
+          );
+          transient.retryable = true;
+        }
+      } else {
+        transient = new Error(
+          "Gemini is busy right now (HTTP " + geminiCode + "). " + waitAdvice +
+          " If it persists, try a lighter model such as gemini-flash-lite-latest."
         );
+        transient.retryable = true;
       }
-      throw new Error(
-        "Gemini is busy right now (HTTP " + geminiCode + ") and nothing was logged. " +
-        waitAdvice + " If it persists, try a lighter model such as gemini-flash-lite-latest " +
-        "in Settings."
-      );
+
+      transient.retryAfter = waitSeconds || 30;
+      throw transient;
     }
     if (geminiCode !== 200) {
       throw new Error("Gemini API error " + geminiCode + ": " + geminiErrorMessage(geminiResponse));
@@ -665,8 +715,14 @@ ${data.notes ? "The researcher added this note, which may identify the person of
     })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: err.message || err.toString(),
+      // Present only on failures the caller should queue and retry, so a
+      // misconfiguration is never retried forever.
+      retryable: Boolean(err.retryable),
+      retryAfter: err.retryAfter || 0
+    })).setMimeType(ContentService.MimeType.JSON);
   } finally {
     lock.releaseLock();
   }

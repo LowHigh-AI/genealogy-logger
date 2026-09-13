@@ -10,12 +10,13 @@
     "128": "icons/icon-128.png"
   },
   "permissions": [
-    "tabs",
     "activeTab",
+    "alarms",
+    "contextMenus",
+    "notifications",
     "scripting",
     "storage",
-    "notifications",
-    "contextMenus"
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"

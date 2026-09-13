@@ -1,6 +1,6 @@
 // popup.js
 import { capturePage } from '../lib/capture.js';
-import { submitLog } from '../lib/submit.js';
+import { logOrQueue, queueSize } from '../lib/queue.js';
 
 let capture = null;
 
@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const familyLineSelect = document.getElementById('family-line-select');
   const addLinesLink = document.getElementById('add-lines-link');
   const settingsBtn = document.getElementById('settings-btn');
+  const queueNote = document.getElementById('queue-note');
 
   settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
   addLinesLink.addEventListener('click', () => chrome.runtime.openOptionsPage());
@@ -98,6 +99,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Anything still waiting from an earlier rate limit.
+  async function showQueueNote() {
+    try {
+      const size = await queueSize();
+      queueNote.textContent = size
+        ? `${size} record${size === 1 ? '' : 's'} waiting to be logged — retrying automatically.`
+        : '';
+      queueNote.classList.toggle('hidden', size === 0);
+    } catch (e) {
+      queueNote.classList.add('hidden');
+    }
+  }
+  await showQueueNote();
+
   retryBtn.addEventListener('click', runCapture);
   await runCapture();
 
@@ -111,12 +126,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     messageArea.className = 'message hidden';
 
     try {
-      const result = await submitLog({
+      const outcome = await logOrQueue({
         capture,
         notes: notesInput.value.trim(),
         familyLine: familyLineSelect.value || ''
       });
 
+      if (outcome.status === 'queued') {
+        // Rate limited, but the capture is saved — nothing has to be re-scraped.
+        showMessage(
+          `Gemini is rate limited, so this page was <strong>queued</strong> ` +
+          `(${outcome.size} waiting). It will be logged automatically — you can close this.`,
+          'success'
+        );
+        setStatus('Queued', 'success');
+        notesInput.value = '';
+        await showQueueNote();
+        return;
+      }
+
+      const result = outcome.result;
       // The webhook tells us exactly where the row landed — show it.
       const links = [];
       if (result.spreadsheetUrl) links.push(`<a href="${result.spreadsheetUrl}" target="_blank">Open sheet</a>`);

@@ -2,6 +2,9 @@
 
 import { capturePage } from './lib/capture.js';
 import { submitLog } from './lib/submit.js';
+import {
+  logOrQueue, peek, shift, bumpAttempts, queueSize, scheduleDrain, showQueueBadge, MIN_ALARM_SECONDS
+} from './lib/queue.js';
 
 const LOG_MENU_ID = 'log-page';
 const RELOAD_MENU_ID = 'reload-extension';
@@ -10,6 +13,11 @@ const RELOAD_MENU_ID = 'reload-extension';
 const BADGE_WORKING = '#b07d2b';
 const BADGE_SUCCESS = '#2e6b4f';
 const BADGE_ERROR = '#a33a2a';
+const BADGE_QUEUED = '#6b6358';
+
+const DRAIN_ALARM = 'drain-queue';
+// A capture that keeps failing should not cycle forever.
+const MAX_ATTEMPTS = 5;
 
 // Chrome injects update_url into the manifest for Web Store installs, so its absence
 // means we are running unpacked. Lets the dev-only reload stay out of the shipped build
@@ -61,18 +69,84 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
   try {
     const capture = await capturePage(tab);
-    const result = await submitLog({ capture });
+    const outcome = await logOrQueue({ capture });
 
-    console.info(`[Genealogy Logger] logged to "${result.tab}" row ${result.rowAdded}`);
-    await setBadge(tab.id, '✓', BADGE_SUCCESS);
-    notify('Record logged', `Added to "${result.tab}" (row ${result.rowAdded}).`);
-    clearBadgeLater(tab.id);
+    if (outcome.status === 'queued') {
+      await setBadge(tab.id, '⋯', BADGE_QUEUED);
+      notify(
+        'Record queued',
+        `Gemini is rate limited. This page is saved and will be logged automatically ` +
+        `(${outcome.size} waiting).`
+      );
+    } else {
+      console.info(`[Genealogy Logger] logged to "${outcome.result.tab}" row ${outcome.result.rowAdded}`);
+      await setBadge(tab.id, '✓', BADGE_SUCCESS);
+      notify('Record logged', `Added to "${outcome.result.tab}" (row ${outcome.result.rowAdded}).`);
+      clearBadgeLater(tab.id);
+    }
   } catch (err) {
     console.error('[Genealogy Logger] failed:', err);
     await setBadge(tab.id, '!', BADGE_ERROR);
     notify('Could not log this record', err.message);
   }
 });
+
+// --- Queue -------------------------------------------------------------------------
+
+
+
+/**
+ * Sends one queued capture. Called on an alarm, so each run is short and the worker
+ * is free to shut down in between.
+ */
+async function drainQueue() {
+  const item = await peek();
+  if (!item) {
+    await chrome.action.setBadgeText({ text: '' });
+    return;
+  }
+
+  try {
+    const result = await submitLogDirect(item);
+    await shift();
+    console.info(`[Genealogy Logger] queued record logged to "${result.tab}" row ${result.rowAdded}`);
+    notify('Queued record logged', `Added to "${result.tab}" (row ${result.rowAdded}).`);
+  } catch (err) {
+    const attempts = await bumpAttempts();
+
+    if (!err.retryable || attempts >= MAX_ATTEMPTS) {
+      // Permanent, or we have tried long enough - drop it rather than retry forever.
+      await shift();
+      console.error(`[Genealogy Logger] giving up on queued record:`, err);
+      notify('Could not log a queued record', err.message);
+    } else {
+      console.warn(`[Genealogy Logger] attempt ${attempts} failed, will retry:`, err.message);
+      await scheduleDrain(err.retryAfter);
+      await showQueueBadge();
+      return;
+    }
+  }
+
+  const remaining = await queueSize();
+  await showQueueBadge();
+  if (remaining > 0) await scheduleDrain(MIN_ALARM_SECONDS);
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === DRAIN_ALARM) drainQueue();
+});
+
+// Pick the queue back up after a browser restart.
+chrome.runtime.onStartup.addListener(async () => {
+  if (await queueSize()) {
+    await showQueueBadge();
+    await scheduleDrain(MIN_ALARM_SECONDS);
+  }
+});
+
+function submitLogDirect(item) {
+  return submitLog({ capture: item.capture, notes: item.notes, familyLine: item.familyLine });
+}
 
 async function setBadge(tabId, text, color) {
   try {

@@ -245,3 +245,15 @@ body {
   gap: 12px;
   margin-top: 6px;
 }
+
+/* Captures waiting out a rate limit */
+.queue-note {
+  margin: 0 14px 10px 14px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
