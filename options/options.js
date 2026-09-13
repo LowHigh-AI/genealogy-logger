@@ -3,6 +3,7 @@
 document.addEventListener("DOMContentLoaded", async () => {
   const apiKeyInput = document.getElementById("apiKey");
   const webhookUrlInput = document.getElementById("webhookUrl");
+  const sheetUrlInput = document.getElementById("sheetUrl");
   const saveBtn = document.getElementById("saveBtn");
   const testBtn = document.getElementById("testBtn");
   const toggleApiKeyBtn = document.getElementById("toggleApiKey");
@@ -18,15 +19,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   let {
     apiKey = "",
     webhookUrl = "https://script.google.com/macros/s/AKfycbw0Ga8e_Ey4cLcpLmLE0vWtl3PH8IEMqMmajTN94cs6CvSpSn68jjqNjevD1lQ6vyme/exec",
+    sheetUrl = "",
     familyLines = []
   } = await chrome.storage.sync.get([
     "apiKey",
     "webhookUrl",
+    "sheetUrl",
     "familyLines"
   ]);
 
   apiKeyInput.value = apiKey;
   webhookUrlInput.value = webhookUrl;
+  sheetUrlInput.value = sheetUrl;
 
   updateStatusBadge(apiKey, webhookUrl);
   renderFamilyLines();
@@ -115,19 +119,48 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // Pulls the file id out of a Google Sheets URL. Also accepts a bare id, so pasting
+  // either the full URL or just the id both work. Returns null if neither.
+  function parseSpreadsheetId(value) {
+    const input = (value || "").trim();
+    if (!input) return "";
+
+    const urlMatch = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (urlMatch) return urlMatch[1];
+
+    // A bare id pasted on its own.
+    if (/^[a-zA-Z0-9-_]{20,}$/.test(input)) return input;
+
+    return null;
+  }
+
   // Save Settings
   document.getElementById("settingsForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const key = apiKeyInput.value.trim();
     const webhook = webhookUrlInput.value.trim();
+    const sheet = sheetUrlInput.value.trim();
+
+    const spreadsheetId = parseSpreadsheetId(sheet);
+    if (spreadsheetId === null) {
+      showFeedback("That doesn't look like a Google Sheet URL. Copy the address bar from your open sheet, or leave it blank.", "error");
+      return;
+    }
 
     await chrome.storage.sync.set({
       apiKey: key,
-      webhookUrl: webhook
+      webhookUrl: webhook,
+      sheetUrl: sheet,
+      spreadsheetId: spreadsheetId
     });
 
     updateStatusBadge(key, webhook);
-    showFeedback("Settings saved successfully!", "success");
+    showFeedback(
+      spreadsheetId
+        ? "Settings saved — logging to sheet " + spreadsheetId
+        : "Settings saved successfully!",
+      "success"
+    );
   });
 
   // Test Connection

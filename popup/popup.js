@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       // Retrieve settings (webhookUrl, apiKey) from storage
-      const settings = await chrome.storage.sync.get(['webhookUrl', 'apiKey']);
+      const settings = await chrome.storage.sync.get(['webhookUrl', 'apiKey', 'spreadsheetId']);
       if (!settings.webhookUrl) {
         throw new Error("Web App URL not set in extension options.");
       }
@@ -157,7 +157,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         sourceUrl: scrapedData.sourceUrl,
         printUrl: scrapedData.media.printUrl,
         apiKey: settings.apiKey || "",
-        targetFamilyLine: familyLineSelect.value || ""
+        targetFamilyLine: familyLineSelect.value || "",
+        spreadsheetId: settings.spreadsheetId || ""
       };
 
       const response = await fetch(settings.webhookUrl, {

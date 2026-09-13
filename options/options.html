@@ -57,6 +57,17 @@
             <p class="field-hint">Must match the GAS_SECRET_KEY in your Apps Script project properties to authorize requests.</p>
           </div>
 
+          <div class="form-group step-group">
+            <div class="step-badge-label">
+              <span class="step-num">Step 3</span>
+              <label for="sheetUrl">
+                Google Sheet URL
+              </label>
+            </div>
+            <input type="url" id="sheetUrl" placeholder="https://docs.google.com/spreadsheets/d/.../edit">
+            <p class="field-hint">Paste the full URL of the sheet you want records written to. Leave blank if you created the Apps Script from inside that sheet (Extensions &gt; Apps Script) &mdash; it will use that sheet automatically.</p>
+          </div>
+
           <div class="button-row">
             <button type="submit" class="btn btn-primary" id="saveBtn">Save Settings</button>
             <button type="button" class="btn btn-secondary" id="testBtn">Test Connection</button>

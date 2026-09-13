@@ -13,13 +13,31 @@
  * 1. Open your target Google Sheet.
  * 2. In top menu, click: Extensions > Apps Script.
  * 3. Replace all code with this script and save (Cmd+S / Ctrl+S).
- * 4. Click "Deploy" > "New deployment" > Select type "Web app".
- * 5. Set "Execute as": "Me" and "Who has access": "Anyone".
- * 6. Click "Deploy", approve permissions, and copy the Web app URL.
- * 7. Paste the Web app URL into the Genealogy Logger extension settings.
+ * 4. Project Settings (gear icon) > tick "Show 'appsscript.json' manifest file in
+ *    editor", then paste in the appsscript.json from this same folder. This declares
+ *    the OAuth scopes the script needs - without the external_request scope you get
+ *    "You do not have permission to call UrlFetchApp.fetch" at runtime.
+ * 5. Select "forceAuth" in the function dropdown and click Run. Approve the permission
+ *    prompt (Advanced > Go to project (unsafe) > Allow). This is the ONLY reliable way
+ *    to trigger the consent screen - running doGet will not, because it touches no
+ *    protected services and therefore requires no scopes.
+ * 6. Click "Deploy" > "New deployment" > Select type "Web app".
+ * 7. Set "Execute as": "Me" and "Who has access": "Anyone".
+ * 8. Click "Deploy" and copy the Web app URL.
+ * 9. Paste the Web app URL into the Genealogy Logger extension settings, along with
+ *    your Google Sheet's URL (Settings > Step 3). That is what tells the script which
+ *    spreadsheet to write to - no id needs to be hardcoded here.
+ *
+ * IMPORTANT: authorization is granted per Google account. Whichever account you are
+ * signed in as when you deploy is the account the web app executes as, so it must be
+ * the same account that approved the prompt in step 5.
  */
 
-const SPREADSHEET_ID = "11ul12tBcS1_H5RUaMA9w6YJ8gWlaMUkB";
+// Normally leave blank. The extension sends the target sheet from its Settings page,
+// and a container-bound script (Extensions > Apps Script from inside your sheet) finds
+// its own sheet. Set this only to pin a specific sheet in code; copy the id from the
+// sheet URL: docs.google.com/spreadsheets/d/<THIS PART>/edit
+const SPREADSHEET_ID = "";
 const DEFAULT_TAB_NAME = "Genealogy Log";
 const HEADERS = [
   "Logged Date", "Primary Person", "Event Type", "Event Date",
@@ -31,6 +49,44 @@ const HEADERS = [
 function sanitizeTabName(name) {
   const cleaned = (name || "").toString().replace(/[:\\/?*\[\]]/g, "").trim();
   return cleaned ? cleaned.slice(0, 100) : DEFAULT_TAB_NAME;
+}
+
+// Resolves the target spreadsheet, in priority order:
+//   1. the id the extension sends (Settings > Google Sheet URL) - most explicit
+//   2. the SPREADSHEET_ID constant below - for standalone deployments
+//   3. the bound spreadsheet - the documented "Extensions > Apps Script" setup
+// Anyone holding the webhook URL and API key can therefore target any sheet this
+// account can open; the API key is the security boundary, so keep it secret.
+function getSpreadsheet(requestedId) {
+  const id = (requestedId || "").toString().trim() || SPREADSHEET_ID;
+
+  if (id) {
+    try {
+      return SpreadsheetApp.openById(id);
+    } catch (err) {
+      throw new Error(
+        "Could not open spreadsheet id '" + id + "'. Check that it matches the /d/<ID>/ portion " +
+        "of your sheet's URL and that " + getAccountLabel() + " can open it. (" + err.message + ")"
+      );
+    }
+  }
+
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) return active;
+
+  throw new Error(
+    "No spreadsheet configured. Paste your sheet's URL into the extension's Settings page, " +
+    "or create this script from inside the sheet itself (Extensions > Apps Script)."
+  );
+}
+
+// Best-effort account name for error messages; never let it break the real error.
+function getAccountLabel() {
+  try {
+    return Session.getEffectiveUser().getEmail() || "this account";
+  } catch (err) {
+    return "this account";
+  }
 }
 
 // Ensures the given sheet's row 1 matches HEADERS, rewriting it if it's missing,
@@ -180,7 +236,7 @@ Raw Text: ${data.rawText}`;
     }
 
     // 4. Append to Spreadsheet
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss = getSpreadsheet(data.spreadsheetId);
     const tabName = data.targetFamilyLine ? sanitizeTabName(data.targetFamilyLine) : DEFAULT_TAB_NAME;
     let sheet = ss.getSheetByName(tabName);
 
@@ -242,4 +298,21 @@ function doGet(e) {
   return ContentService.createTextOutput(
     JSON.stringify({ status: "ok", message: "Genealogy Logger Webhook is active and ready." })
   ).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * One-time authorization helper. Run this manually from the Apps Script editor to
+ * trigger Google's consent screen for every scope doPost needs.
+ *
+ * doGet/doPost cannot do this for you: doGet only uses ContentService (zero scopes),
+ * and doPost is invoked anonymously over HTTP, where Google cannot show a prompt - it
+ * just fails with "You do not have permission to call UrlFetchApp.fetch".
+ *
+ * Safe to run repeatedly: it only reads, and writes nothing.
+ */
+function forceAuth() {
+  UrlFetchApp.fetch("https://www.google.com");           // script.external_request
+  getSpreadsheet().getName();                            // spreadsheets
+  DriveApp.getRootFolder().getName();                    // drive
+  Logger.log("Authorization complete for: " + Session.getEffectiveUser().getEmail());
 }

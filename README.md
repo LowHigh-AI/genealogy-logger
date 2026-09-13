@@ -21,12 +21,16 @@ Log genealogical records from FamilySearch, MyHeritage, GenealogyBank, Find a Gr
 1. Open or create a Google Sheet at [sheets.new](https://sheets.new).
 2. In the top menu, go to **Extensions > Apps Script**.
 3. Replace the existing code with the contents of `google-sheets-script/Code.gs` (or click **Copy Script Code** on the extension settings page).
-4. Click **Deploy > New deployment**.
-5. Select type: **Web app**:
-   - **Execute as**: `Me (your email)`
+4. Click the gear icon (**Project Settings**) and tick **"Show 'appsscript.json' manifest file in editor"**, then replace that file's contents with `google-sheets-script/appsscript.json`. This declares the OAuth scopes the script needs.
+5. Back in the editor, pick **`forceAuth`** in the function dropdown and click **Run**. Approve the prompt (**Advanced > Go to ... (unsafe) > Allow**). Check the execution log — it prints the account that just authorized.
+6. Click **Deploy > New deployment**.
+7. Select type: **Web app**:
+   - **Execute as**: `Me (your email)` — must be the same account from step 5
    - **Who has access**: `Anyone`
-6. Click **Deploy**, authorize permissions when prompted, and copy the **Web app URL**.
-7. Paste this URL into **Step 2** on the extension settings page.
+8. Click **Deploy** and copy the **Web app URL**.
+9. Paste this URL into the extension's settings page, and paste your **Google Sheet's URL** into the "Google Sheet URL" field there so the script knows where to write.
+
+> **"You do not have permission to call UrlFetchApp.fetch"?** The script never got the `script.external_request` scope. Redo steps 4–5 — and confirm the account in the step 5 log is the same one you deployed with, since a web app runs as whoever deployed it.
 
 ---
 
